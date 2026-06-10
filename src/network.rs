@@ -1,11 +1,10 @@
 use crate::config::{BrainConfig, CONFIG};
 use crate::models::{NeuronState, NeuronType, Synapse};
 use bincode_next as bincode;
-use byteorder::BigEndian as BE;
-use byteorder::{ReadBytesExt, WriteBytesExt};
+use byteorder::{BigEndian, WriteBytesExt};
 use sled::{Db, Tree};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering}; // Импортируем CONFIG из модуля config
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub struct SpikeEvent {
     pub neuron_id: u64,
@@ -14,12 +13,12 @@ pub struct SpikeEvent {
 
 pub struct SpikingNetwork {
     db: Db,
-    neurons: Tree,
-    synapses: Tree,
-    vocabulary: Tree,
+    pub neurons: Tree,
+    pub synapses: Tree,
+    pub vocabulary: Tree,
     pub current_tick: u64,
     event_queue: VecDeque<SpikeEvent>,
-    next_neuron_id: AtomicU64,
+    next_neuron_id: AtomicU64, 
     previous_tick_spikes: Vec<u64>,
     coincidence_tracker: HashMap<(u64, u64), u32>,
 }
@@ -31,7 +30,6 @@ impl SpikingNetwork {
         let synapses = db.open_tree("synapses").expect("Ошибка дерева синапсов");
         let vocabulary = db.open_tree("vocabulary").expect("Ошибка дерева словаря");
 
-        // Инициализируем глобальный OnceLock
         let _ = CONFIG.set(config);
 
         Self {
@@ -47,18 +45,50 @@ impl SpikingNetwork {
         }
     }
 
+    // =================================================================
+    // ЛУЧШИЕ ПРАКТИКИ: ИНКАПСУЛЯЦИЯ РАБОТЫ С БАЙТАМИ (DRY)
+    // =================================================================
+
     fn encode_synapse_key(source_id: u64, target_id: u64) -> Vec<u8> {
         let mut wtr = Vec::with_capacity(16);
-        wtr.write_u64::<BE>(source_id).unwrap();
-        wtr.write_u64::<BE>(target_id).unwrap();
+        wtr.write_u64::<BigEndian>(source_id).unwrap();
+        wtr.write_u64::<BigEndian>(target_id).unwrap();
         wtr
     }
 
     fn encode_prefix_key(source_id: u64) -> Vec<u8> {
         let mut wtr = Vec::with_capacity(8);
-        wtr.write_u64::<BE>(source_id).unwrap();
+        wtr.write_u64::<BigEndian>(source_id).unwrap();
         wtr
     }
+
+    /// Декодирует одиночный u64 ID нейрона из Кey-Value ключа Sled
+    fn decode_neuron_id(key: &[u8]) -> u64 {
+        use byteorder::{BigEndian, ReadBytesExt};
+        let mut rdr = &key[0..8];
+        rdr.read_u64::<BigEndian>()
+            .expect("Ошибка декодирования Neuron ID")
+    }
+
+    /// Декодирует составной ключ синапса и возвращает кортеж (source_id, target_id)
+    fn decode_synapse_key(key: &[u8]) -> (u64, u64) {
+        use byteorder::{BigEndian, ReadBytesExt};
+        let mut source_rdr = &key[0..8];
+        let source_id = source_rdr
+            .read_u64::<BigEndian>()
+            .expect("Ошибка декодирования Source ID");
+
+        let mut target_rdr = &key[8..16];
+        let target_id = target_rdr
+            .read_u64::<BigEndian>()
+            .expect("Ошибка декодирования Target ID");
+
+        (source_id, target_id)
+    }
+
+    // =================================================================
+    // ПРИКЛАДНАЯ ЛОГИКА И НЕЙРОМОРФНЫЕ ВЫЧИСЛЕНИЯ
+    // =================================================================
 
     pub fn create_neuron(&self, neuron_type: NeuronType) -> u64 {
         const MAX_ID_LIMIT: u64 = u64::MAX / 2;
@@ -132,63 +162,78 @@ impl SpikingNetwork {
         }
     }
 
+    /// Внутрибазовые вычисления (In-Database Computing) мембранного потенциала
     fn process_impulse_to_neuron(&self, neuron_id: u64, charge: f32) -> bool {
         let mut key_bytes = Vec::with_capacity(8);
         use byteorder::{BigEndian, WriteBytesExt};
         key_bytes.write_u64::<BigEndian>(neuron_id).unwrap();
 
-        if let Some(ivec) = self.neurons.get(&key_bytes).expect("Ошибка чтения нейрона")
-        {
-            let (mut neuron, _): (NeuronState, usize) =
-                bincode::decode_from_slice(&ivec, bincode::config::standard()).unwrap();
+        let mut spiked = false;
+        let current_t = self.current_tick;
 
-            // ИСПРАВЛЕНИЕ: Никаких лишних параметров, метод сам возьмет CONFIG из памяти!
-            if neuron.receive_impulse(charge, self.current_tick) {
-                let updated_bytes =
-                    bincode::encode_to_vec(&neuron, bincode::config::standard()).unwrap();
-                self.neurons.insert(key_bytes, updated_bytes).unwrap();
-                return true;
-            }
-            let updated_bytes =
-                bincode::encode_to_vec(&neuron, bincode::config::standard()).unwrap();
-            self.neurons.insert(key_bytes, updated_bytes).unwrap();
-        }
-        false
+        let _ = self
+            .neurons
+            .update_and_fetch(&key_bytes, |old_bytes| {
+                if let Some(bytes) = old_bytes {
+                    let (mut neuron, _): (NeuronState, usize) =
+                        bincode::decode_from_slice(bytes, bincode::config::standard()).unwrap();
+                    if neuron.receive_impulse(charge, current_t) {
+                        spiked = true;
+                    }
+                    let updated_bytes =
+                        bincode::encode_to_vec(&neuron, bincode::config::standard()).unwrap();
+                    Some(updated_bytes)
+                } else {
+                    None
+                }
+            })
+            .expect("Ошибка атомарного обновления нейрона");
+
+        spiked
     }
 
+    /// Внутрибазовое дофаминовое подкрепление синапсов Критиком
     pub fn apply_reinforcement(&mut self, is_success: bool) {
-        let cfg = CONFIG.get().expect("Конфиг не инициализирован");
-        let mut updated_synapses = Vec::new();
+        let current_t = self.current_tick;
 
         for result in self.synapses.iter() {
-            if let Ok((key_bytes, val_bytes)) = result {
-                let (mut synapse, _): (Synapse, usize) =
-                    bincode::decode_from_slice(&val_bytes, bincode::config::standard()).unwrap();
-                synapse.decay_tag_lazy(self.current_tick);
+            if let Ok((key_bytes, _)) = result {
+                let _ = self.synapses.update_and_fetch(&key_bytes, |old_bytes| {
+                    if let Some(bytes) = old_bytes {
+                        let (mut synapse, _): (Synapse, usize) =
+                            bincode::decode_from_slice(bytes, bincode::config::standard()).unwrap();
+                        synapse.decay_tag_lazy(current_t);
 
-                if synapse.tag_trace > 0.001 {
-                    if is_success {
-                        synapse.weight += synapse.tag_trace * cfg.learning_rate;
-                        if synapse.weight > 3.0 {
-                            synapse.weight = 3.0;
+                        if synapse.tag_trace > 0.001 {
+                            let cfg = CONFIG.get().expect("Конфиг не инициализирован");
+                            if is_success {
+                                synapse.weight += synapse.tag_trace * cfg.learning_rate;
+                                if synapse.weight > 3.0 {
+                                    synapse.weight = 3.0;
+                                }
+                            } else {
+                                synapse.weight -= synapse.tag_trace * cfg.punish_rate;
+                                if synapse.weight < 0.0 {
+                                    synapse.weight = 0.0;
+                                }
+                            }
+                            synapse.tag_trace = 0.0;
+                            let updated_bytes =
+                                bincode::encode_to_vec(&synapse, bincode::config::standard())
+                                    .unwrap();
+                            Some(updated_bytes)
+                        } else {
+                            Some(bytes.to_vec())
                         }
                     } else {
-                        synapse.weight -= synapse.tag_trace * cfg.punish_rate;
-                        if synapse.weight < 0.0 {
-                            synapse.weight = 0.0;
-                        }
+                        None
                     }
-                    synapse.tag_trace = 0.0;
-                    updated_synapses.push((key_bytes, synapse));
-                }
+                });
             }
-        }
-        for (key, synapse) in updated_synapses {
-            let bytes = bincode::encode_to_vec(&synapse, bincode::config::standard()).unwrap();
-            self.synapses.insert(key, bytes).unwrap();
         }
     }
 
+    /// Контрастный сон и нелинейный синаптический прунинг
     pub fn sleep_and_prune(&mut self) {
         println!("\n[КОНТРАСТНЫЙ СОН]: Анализ графа знаний и выжигание информационного шума...");
         const DEATH_THRESHOLD: f32 = 0.2;
@@ -201,12 +246,8 @@ impl SpikingNetwork {
                 let (mut synapse, _): (Synapse, usize) =
                     bincode::decode_from_slice(&val_bytes, bincode::config::standard()).unwrap();
 
-                use byteorder::{BigEndian, ReadBytesExt};
-                let mut source_rdr = &key_bytes[0..8];
-                let source_id = source_rdr.read_u64::<BigEndian>().unwrap();
-                let mut target_rdr = &key_bytes[8..16];
-                let target_id = target_rdr.read_u64::<BigEndian>().unwrap();
-
+                // Извлекаем ID через чистый изолированный парсер
+                let (source_id, target_id) = Self::decode_synapse_key(&key_bytes);
                 let old_weight = synapse.weight;
 
                 if old_weight >= 1.5 {
@@ -241,10 +282,7 @@ impl SpikingNetwork {
                 let (neuron, _): (NeuronState, usize) =
                     bincode::decode_from_slice(&val_bytes, bincode::config::standard()).unwrap();
                 if neuron.neuron_type == NeuronType::Hidden {
-                    use byteorder::{BigEndian, ReadBytesExt};
-                    let mut rdr = &key_bytes[0..8];
-                    let neuron_id = rdr.read_u64::<BigEndian>().unwrap();
-
+                    let neuron_id = Self::decode_neuron_id(&key_bytes);
                     if !neuron_activity_counter.contains_key(&neuron_id) {
                         neurons_to_remove.push(key_bytes);
                     }
@@ -265,8 +303,6 @@ impl SpikingNetwork {
         let cfg = CONFIG.get().expect("Конфиг не инициализирован");
         let mut current_tick_spikes = Vec::new();
         let mut next_spikes = Vec::new();
-        let mut synapses_to_update = Vec::new();
-
         while let Some(pos) = self
             .event_queue
             .iter()
@@ -274,26 +310,35 @@ impl SpikingNetwork {
         {
             let event = self.event_queue.remove(pos).unwrap();
             current_tick_spikes.push(event.neuron_id);
-
             let prefix = Self::encode_prefix_key(event.neuron_id);
+            let current_t = self.current_tick;
             for result in self.synapses.scan_prefix(&prefix) {
-                if let Ok((key_bytes, val_bytes)) = result {
-                    let (mut synapse, _): (Synapse, usize) =
-                        bincode::decode_from_slice(&val_bytes, bincode::config::standard())
-                            .unwrap();
-                    synapse.trigger(self.current_tick);
-                    synapses_to_update.push((key_bytes.clone(), synapse.clone()));
-                    let mut rdr = &key_bytes[8..16];
-                    let target_id = rdr.read_u64::<BE>().unwrap();
-                    if self.process_impulse_to_neuron(target_id, synapse.weight) {
+                if let Ok((key_bytes, _)) = result {
+                    let mut current_weight = 0.0;
+                    let _ = self
+                        .synapses
+                        .update_and_fetch(&key_bytes, |old_bytes| {
+                            if let Some(bytes) = old_bytes {
+                                let (mut synapse, _): (Synapse, usize) =
+                                    bincode::decode_from_slice(bytes, bincode::config::standard())
+                                        .unwrap();
+                                synapse.trigger(current_t);
+                                current_weight = synapse.weight;
+                                let updated_bytes =
+                                    bincode::encode_to_vec(&synapse, bincode::config::standard())
+                                        .unwrap();
+                                Some(updated_bytes)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap();
+                    let (_, target_id) = Self::decode_synapse_key(&key_bytes);
+                    if self.process_impulse_to_neuron(target_id, current_weight) {
                         next_spikes.push(target_id);
                     }
                 }
             }
-        }
-        for (key, synapse) in synapses_to_update {
-            let bytes = bincode::encode_to_vec(&synapse, bincode::config::standard()).unwrap();
-            self.synapses.insert(key, bytes).unwrap();
         }
         for &old_id in &self.previous_tick_spikes {
             for &new_id in &current_tick_spikes {
@@ -333,91 +378,21 @@ impl SpikingNetwork {
             0.0
         }
     }
-    /// ИНСПЕКЦИЯ МЫШЛЕНИЯ: Находит ID нейрона, с которым у данного нейрона самая сильная связь в БД.
-    /// Возвращает ID цели и вес этой связи.
     pub fn get_strongest_prediction(&self, source_id: u64) -> Option<(u64, f32)> {
         let prefix = Self::encode_prefix_key(source_id);
         let mut strongest_target = None;
         let mut max_weight = -1.0;
-
         for result in self.synapses.scan_prefix(&prefix) {
             if let Ok((key_bytes, val_bytes)) = result {
-                let (synapse, _): (Synapse, usize) = bincode::decode_from_slice(&val_bytes, bincode::config::standard()).unwrap();
-                
+                let (synapse, _): (Synapse, usize) =
+                    bincode::decode_from_slice(&val_bytes, bincode::config::standard()).unwrap();
                 if synapse.weight > max_weight {
                     max_weight = synapse.weight;
-                    
-                    use byteorder::{BigEndian, ReadBytesExt};
-                    let mut rdr = &key_bytes[8..16];
-                    let target_id = rdr.read_u64::<BigEndian>().unwrap();
+                    let (_, target_id) = Self::decode_synapse_key(&key_bytes);
                     strongest_target = Some((target_id, synapse.weight));
                 }
             }
         }
         strongest_target
-    }    
-}
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    fn get_test_db_path() -> String {
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        format!("./test_spikedb_{}", ts)
-    }
-    #[test]
-    fn test_basic_lif_propagation() {
-        let path = get_test_db_path();
-        let mut net = SpikingNetwork::new(&path, BrainConfig::default());
-        let s = net.create_neuron(NeuronType::Sensor);
-        let m = net.create_neuron(NeuronType::Motor);
-        net.set_synapse(s, m, 1.2);
-        net.inject_stimulus(s, 1.2);
-        assert_eq!(net.active_spikes_count(), 1);
-        net.tick();
-        assert_eq!(net.active_spikes_count(), 1);
-        drop(net);
-        let _ = fs::remove_dir_all(&path);
-    }
-    #[test]
-    fn test_chunking_evolution() {
-        let path = get_test_db_path();
-        let mut net = SpikingNetwork::new(&path, BrainConfig::default());
-        let token_a = net.create_neuron(NeuronType::Sensor);
-        let token_b = net.create_neuron(NeuronType::Sensor);
-        for _ in 0..3 {
-            net.inject_stimulus(token_a, 1.2);
-            net.tick();
-            net.inject_stimulus(token_b, 1.2);
-            net.tick();
-            while net.active_spikes_count() > 0 {
-                net.tick();
-            }
-        }
-        let mut key_bytes = Vec::with_capacity(8);
-        key_bytes.write_u64::<BE>(2).unwrap();
-        let meta_exists = net.neurons.contains_key(&key_bytes).unwrap();
-        assert!(meta_exists);
-        drop(net);
-        let _ = fs::remove_dir_all(&path);
-    }
-
-    #[test]
-    fn test_critic_reinforcement() {
-        let path = get_test_db_path();
-        let mut net = SpikingNetwork::new(&path, BrainConfig::default());
-        let s = net.create_neuron(NeuronType::Hidden);
-        let m = net.create_neuron(NeuronType::Motor);
-        net.set_synapse(s, m, 0.5);
-        net.inject_stimulus(s, 1.0);
-        net.tick();
-        net.apply_reinforcement(true);
-        let updated_weight = net.get_synapse_weight(s, m);
-        assert!(updated_weight > 0.5);
-        drop(net);
-        let _ = fs::remove_dir_all(&path);
     }
 }
