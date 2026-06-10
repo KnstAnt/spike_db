@@ -5,29 +5,40 @@ pub enum NeuronType {
     Hidden,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum NeuronOrigin {
+    // Указывает на имя базового токена
+    BaseToken(String),
+    // Ссылка на базовые нейроны, на основе которых рождено новое мета-понятие
+    ChunkSequence(u64, u64),
+}
+
 #[derive(Debug, Clone)]
 pub struct NeuronState {
     pub potential: f32,
     pub last_updated_tick: u64,
     pub cooldown_until: u64,
     pub neuron_type: NeuronType,
+    // НОВОЕ ПОЛЕ: Каноничная ссылка происхождения нейрона
+    pub origin: NeuronOrigin, 
 }
 
 #[derive(Debug, Clone)]
 pub struct Synapse {
-    pub target_id: u64,    // ID целевого нейрона, куда летит импульс
-    pub weight: f32,       // Сила связи
-    pub tag_trace: f32,    // Химический след активности (Tag)
+    pub target_id: u64,
+    pub weight: f32,
+    pub tag_trace: f32,
     pub last_used_tick: u64,
 }
 
 impl NeuronState {
-    pub fn new(neuron_type: NeuronType) -> Self {
+    pub fn new(neuron_type: NeuronType, origin: NeuronOrigin) -> Self {
         Self {
             potential: 0.0,
             last_updated_tick: 0,
             cooldown_until: 0,
             neuron_type,
+            origin,
         }
     }
 

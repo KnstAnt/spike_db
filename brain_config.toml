@@ -1,0 +1,11 @@
+leak_tau = 10.0
+spike_threshold = 1.0
+cooldown_ticks = 5
+tag_tau = 15.0
+coincidence_threshold = 8
+learning_rate = 0.4000000059604645
+punish_rate = 0.20000000298023224
+sleep_death_threshold = 0.20000000298023224
+sleep_strong_decay = 0.9800000190734863
+sleep_medium_decay = 0.8500000238418579
+sleep_weak_shredder = 0.25

@@ -5,18 +5,16 @@ use spikedb::config::BrainConfig;
 #[test]
 fn test_basic_lif_propagation() {
     println!("\n=== [CORE TEST]: Проверка LIF-динамики в ОЗУ ===");
-    
-    // ИСПРАВЛЕНИЕ: Новый конструктор принимает только конфиг, без пути к файлу!
     let mut net = SpikingNetwork::new(BrainConfig::default());
 
-    // Выращиваем нейроны в памяти через обращение к SpikeMemory (.memory)
-    let s = net.memory.create_neuron(NeuronType::Sensor);
-    let m = net.memory.create_neuron(NeuronType::Motor);
+    // ИСПРАВЛЕНИЕ: Используем каноничные методы get_or_create_token
+    let s = net.memory.get_or_create_token("Sensor_A");
+    let m = net.memory.get_or_create_token("Motor_A");
 
     // Прокладываем связь
     net.memory.set_synapse(s, m, 1.2);
     
-    // Подаем импульс (мутабельный метод &mut self)
+    // Подаем импульс
     net.inject_stimulus(s, 1.2);
     assert_eq!(net.active_spikes_count(), 1, "Сенсор должен породить активный спайк");
 
@@ -30,8 +28,9 @@ fn test_chunking_evolution() {
     println!("\n=== [CORE TEST]: Проверка мета-эволюции (Чанкинга) в ОЗУ ===");
     let mut net = SpikingNetwork::new(BrainConfig::default());
 
-    let token_a = net.memory.create_neuron(NeuronType::Sensor);
-    let token_b = net.memory.create_neuron(NeuronType::Sensor);
+    // ИСПРАВЛЕНИЕ: Используем правильные методы создания токенов
+    let token_a = net.memory.get_or_create_token("A");
+    let token_b = net.memory.get_or_create_token("B");
 
     // Повторяем последовательность A -> B для срабатывания совпадения
     for _ in 0..3 {
@@ -42,12 +41,12 @@ fn test_chunking_evolution() {
         while net.active_spikes_count() > 0 { net.tick(); }
     }
 
-    // В нашей новой In-Memory структуре нейроны лежат в плоском Vec.
-    // Изначально были созданы ID 0 и 1. Чанкинг должен вырастить скрытый нейрон с ID 2!
+    // Чанкинг должен вырастить скрытый нейрон с ID 2 на основе связи (0, 1)
     assert!(net.memory.neurons.len() > 2, "Подсистема чанкинга должна автоматически создать Мета-Нейрон ID 2");
     
-    // Проверяем, что тип рожденного нейрона — Hidden
-    assert_eq!(net.memory.neurons[2].neuron_type, NeuronType::Hidden);
+    // Проверяем тип и правильность записи происхождения
+    let meta_neuron = &net.memory.neurons[2];
+    assert_eq!(meta_neuron.neuron_type, NeuronType::Hidden);
 }
 
 #[test]
@@ -55,14 +54,15 @@ fn test_critic_reinforcement() {
     println!("\n=== [CORE TEST]: Проверка дофаминового подкрепления Критика ===");
     let mut net = SpikingNetwork::new(BrainConfig::default());
 
-    let s = net.memory.create_neuron(NeuronType::Hidden);
-    let m = net.memory.create_neuron(NeuronType::Motor);
+    // ИСПРАВЛЕНИЕ: Создаем нейроны через правильный интерфейс токенов
+    let s = net.memory.get_or_create_token("Hidden_Node");
+    let m = net.memory.get_or_create_token("Motor_Node");
 
     net.memory.set_synapse(s, m, 0.5);
     net.inject_stimulus(s, 1.0);
     net.tick();
 
-    // Критик подкрепляет связи (мутабельный метод)
+    // Критик подкрепляет связи
     net.apply_reinforcement(true);
 
     // Проверяем вес (немутабельный метод чтения)
