@@ -9,8 +9,8 @@ enum DbCommand {
     InjectText { token: String, charge: f32 },
     ApplyReinforcement { is_success: bool },
     SleepAndPrune,
-    // Передаем текстовый токен, Ядро само безопасно найдет его ID внутри своего потока
     InspectRequest { token: String, tx_response: crossbeam_channel::Sender<Option<(u64, f32)>> },
+    GenerateTrail { start_token: String, tx_response: crossbeam_channel::Sender<Vec<String>> },
     Shutdown,
 }
 
@@ -57,6 +57,10 @@ impl SpikeDB {
                                 let res = network.get_strongest_prediction(id);
                                 let _ = tx_response.send(res);
                             }
+                            Ok(DbCommand::GenerateTrail { start_token, tx_response }) => {
+                                let trail = network.generate_associative_trail(&start_token);
+                                let _ = tx_response.send(trail);
+                            }
                             Ok(DbCommand::Shutdown) | Err(_) => {
                                 println!("[SpikeDB]: Фиксация транзакций Sled и остановка потока...");
                                 break;
@@ -100,6 +104,15 @@ impl SpikeDB {
             None
         }
     }
+
+    pub fn generate_code_hypothesis(&self, start_token: &str) -> Vec<String> {
+        let (tx_response, rx_response) = crossbeam_channel::bounded::<Vec<String>>(1);
+        let _ = self.tx.send(DbCommand::GenerateTrail {
+            start_token: start_token.to_string(),
+            tx_response,
+        });
+        rx_response.recv().unwrap_or_default()
+    }    
 }
 
 impl Drop for SpikeDB {

@@ -395,4 +395,66 @@ impl SpikingNetwork {
         }
         strongest_target
     }
+    /// ГЕНЕРАТИВНОЕ ЭХО: Сеть сама разворачивает ассоциативную цепочку токенов.
+    /// Начинает с заданного слова и бежит по сильнейшим синапсам, пока не встретит ';' 
+    /// или не исчерпает лимит длины, возвращая ГОТОВЫЙ вектор строк.
+    pub fn generate_associative_trail(&mut self, start_token: &str) -> Vec<String> {
+        let mut trail = Vec::new();
+        
+        // Переводим стартовое слово в ID нейрона через словарь
+        let mut current_id = self.get_or_create_token_neuron(start_token);
+        trail.push(start_token.to_string());
+
+        // Ограничитель, чтобы сеть не ушла в бесконечный генеративный цикл (биологический лимит)
+        for _ in 0..15 {
+            // 1. Ищем сильнейшего последователя для текущего нейрона
+            if let Some((next_id, _weight)) = self.get_strongest_prediction(current_id) {
+                
+                // Взводим tag_trace у синапса "на лету" — фиксируем траекторию мысли
+                let key = Self::encode_synapse_key(current_id, next_id);
+                let current_t = self.current_tick;
+                let _ = self.synapses.update_and_fetch(&key, |old_bytes| {
+                    if let Some(bytes) = old_bytes {
+                        let (mut synapse, _): (Synapse, usize) = bincode::decode_from_slice(bytes, bincode::config::standard()).unwrap();
+                        synapse.trigger(current_t); // Зажигаем след активности
+                        let updated_bytes = bincode::encode_to_vec(&synapse, bincode::config::standard()).unwrap();
+                        Some(updated_bytes)
+                    } else {
+                        None
+                    }
+                }).unwrap();
+
+                // 2. Пытаемся найти текстовое имя этого нейрона в словаре обратным поиском
+                // (Чтобы не усложнять, ищем по дереву vocabulary)
+                let mut token_name = format!("id_{}", next_id); // Фаллбэк, если это скрытый мета-нейрон
+                for result in self.vocabulary.iter() {
+                    if let Ok((word_bytes, id_bytes)) = result {
+                        use byteorder::{BigEndian, ReadBytesExt};
+                        let mut rdr = &id_bytes[..];
+                        if rdr.read_u64::<BigEndian>().unwrap() == next_id {
+                            token_name = String::from_utf8_lossy(&word_bytes).to_string();
+                            break;
+                        }
+                    }
+                }
+
+                // Добавляем слово в цепочку
+                trail.push(token_name.clone());
+
+                // ТЕРМИНАЛЬНАЯ СТЕНА: Если мысль добежала до точки с запятой,
+                // значит синтаксическая конструкция завершена!
+                if token_name == ";" {
+                    break;
+                }
+
+                current_id = next_id;
+            } else {
+                break; // Если связей больше нет — мысль затухла
+            }
+        }
+
+        // Продвигаем глобальный тик, так как генерация заняла время мозга
+        self.current_tick += 1;
+        trail
+    }    
 }
