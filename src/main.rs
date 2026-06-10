@@ -1,55 +1,69 @@
-mod models;
-mod network;
-mod tokenizer;
-
-use models::NeuronType;
-use network::SpikingNetwork;
-use tokenizer::SpikeTokenizer;
+use spikedb::database_manager::SpikeDB;
 use std::fs;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 fn main() {
-    println!("=== Запуск SpikeDB: Чтение и разбор кода ===");
+    println!("=== ИНТЕРФЕЙС КЛАССА SpikeDB ===");
 
-    let unique_timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis();
-        
+    let unique_timestamp = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
     let db_path = format!("./spikedb_data_{}", unique_timestamp);
-    let mut brain = SpikingNetwork::new(&db_path);
+    
+    // Просто открываем базу данных. Вся магия потоков скрыта внутри!
+    let db = SpikeDB::open(&db_path);
 
-    // Строка кода Rust для обучения нашей импульсной сети
-    let rust_code = "let x = 5;";
-    println!("Обучающий поток данных: '{}'\n", rust_code);
+    println!("\nСистема готова. Вводите команды:");
+    println!("  - Текст (например: 'let x = 5;') для отправки импульсов.");
+    println!("  - 'sleep' для запуска очистки памяти.");
+    println!("  - 'good' для отправки дофамина.");
+    println!("  - 'exit' для выхода.");
+    println!("------------------------------------------------------------");
 
-    // Прогоняем чтение строки 3 раза подряд, чтобы сработал Чанкинг совпадений
-    for episode in 1..=3 {
-        println!("--- Чтение строки, итерация №{} ---", episode);
-        
-        // Превращаем текст в последовательность ID биологических сенсоров
-        let neuron_sequence = SpikeTokenizer::tokenize_and_register(&brain, rust_code);
-        
-        if episode == 1 {
-            println!("  [Словарь создан]: Текст успешно спроецирован в ID нейронов: {:?}", neuron_sequence);
-        }
+    let special_chars = ['=', ';', '{', '}', '(', ')', '+', '-', '>', '<'];
 
-        // Поочередно бьем током в каждый токен, симулируя чтение слева направо
-        for &neuron_id in &neuron_sequence {
-            brain.inject_stimulus(neuron_id, 1.2);
-            brain.tick(); // Шаг времени для обработки спайка и накопления статистики
-        }
+    loop {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let trimmed = input.trim();
 
-        // Остужаем сеть между строками
-        while brain.active_spikes_count() > 0 {
-            brain.tick();
+        if trimmed == "exit" {
+            break; // Выходим из цикла. Метод Drop структуры SpikeDB автоматически закроет потоки!
+        } else if trimmed == "sleep" {
+            db.trigger_sleep(); // Просто вызываем метод класса
+        } else if trimmed == "good" {
+            println!("[ИНТЕРФЕЙС]: Отправка сигнала успеха...");
+            db.approve_success(true);
+        } else if trimmed.is_empty() {
+            continue;
+        } else {
+            println!("[ИНТЕРФЕЙС]: Нарезка и асинхронная отправка строки...");
+            
+            let mut current_token = String::new();
+            for ch in trimmed.chars() {
+                if ch.is_whitespace() {
+                    if !current_token.is_empty() {
+                        db.inject_token(&current_token, 1.2);
+                        current_token.clear();
+                    }
+                } else if special_chars.contains(&ch) {
+                    if !current_token.is_empty() {
+                        db.inject_token(&current_token, 1.2);
+                        current_token.clear();
+                    }
+                    db.inject_token(&ch.to_string(), 1.2);
+                } else {
+                    current_token.push(ch);
+                }
+            }
+            if !current_token.is_empty() {
+                db.inject_token(&current_token, 1.2);
+            }
         }
     }
 
-    println!("\n=== Тест завершен ===");
-    println!("Текст успешно преобразован в устойчивые ассоциативные мета-понятия в Sled.");
-
-    drop(brain); 
-    std::thread::sleep(Duration::from_millis(20));
+    println!("\n Закрытие интерфейса... Класс SpikeDB автоматически останавливает потоки.");
+    drop(db); // Вызов деструктора
+    
+    std::thread::sleep(std::time::Duration::from_millis(60));
     let _ = fs::remove_dir_all(&db_path);
+    println!("Временные файлы зачищены. Пока!");
 }

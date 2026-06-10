@@ -1,0 +1,220 @@
+struct Component_0 { }
+impl Component_0 { fn new ( ) -> Self { } }
+struct Engine_1 { }
+impl Engine_1 { fn new ( ) -> Self { } }
+struct Memory_2 { }
+impl Memory_2 { fn new ( ) -> Self { } }
+struct Socket_3 { }
+impl Socket_3 { fn new ( ) -> Self { } }
+struct Logger_4 { }
+impl Logger_4 { fn new ( ) -> Self { } }
+struct Client_5 { }
+impl Client_5 { fn new ( ) -> Self { } }
+struct Config_6 { }
+impl Config_6 { fn new ( ) -> Self { } }
+struct Manager_7 { }
+impl Manager_7 { fn new ( ) -> Self { } }
+struct Server_8 { }
+impl Server_8 { fn new ( ) -> Self { } }
+struct Parser_9 { }
+impl Parser_9 { fn new ( ) -> Self { } }
+struct Router_10 { }
+impl Router_10 { fn new ( ) -> Self { } }
+struct Session_11 { }
+impl Session_11 { fn new ( ) -> Self { } }
+struct Task_12 { }
+impl Task_12 { fn new ( ) -> Self { } }
+struct Event_13 { }
+impl Event_13 { fn new ( ) -> Self { } }
+struct Context_14 { }
+impl Context_14 { fn new ( ) -> Self { } }
+struct Buffer_15 { }
+impl Buffer_15 { fn new ( ) -> Self { } }
+struct Stream_16 { }
+impl Stream_16 { fn new ( ) -> Self { } }
+struct Driver_17 { }
+impl Driver_17 { fn new ( ) -> Self { } }
+struct Cache_18 { }
+impl Cache_18 { fn new ( ) -> Self { } }
+struct Worker_19 { }
+impl Worker_19 { fn new ( ) -> Self { } }
+struct Pipeline_20 { }
+impl Pipeline_20 { fn new ( ) -> Self { } }
+struct Thread_21 { }
+impl Thread_21 { fn new ( ) -> Self { } }
+struct Process_22 { }
+impl Process_22 { fn new ( ) -> Self { } }
+struct System_23 { }
+impl System_23 { fn new ( ) -> Self { } }
+struct Memory_24 { }
+impl Memory_24 { fn new ( ) -> Self { } }
+struct Allocation_25 { }
+impl Allocation_25 { fn new ( ) -> Self { } }
+struct Tracker_26 { }
+impl Tracker_26 { fn new ( ) -> Self { } }
+struct Registry_27 { }
+impl Registry_27 { fn new ( ) -> Self { } }
+struct Factory_28 { }
+impl Factory_28 { fn new ( ) -> Self { } }
+struct Strategy_29 { }
+impl Strategy_29 { fn new ( ) -> Self { } }
+struct Command_30 { }
+impl Command_30 { fn new ( ) -> Self { } }
+struct Query_31 { }
+impl Query_31 { fn new ( ) -> Self { } }
+struct Request_32 { }
+impl Request_32 { fn new ( ) -> Self { } }
+struct Response_33 { }
+impl Response_33 { fn new ( ) -> Self { } }
+struct Connection_34 { }
+impl Connection_34 { fn new ( ) -> Self { } }
+struct Channel_35 { }
+impl Channel_35 { fn new ( ) -> Self { } }
+struct Endpoint_36 { }
+impl Endpoint_36 { fn new ( ) -> Self { } }
+struct Gateway_37 { }
+impl Gateway_37 { fn new ( ) -> Self { } }
+struct Proxy_38 { }
+impl Proxy_38 { fn new ( ) -> Self { } }
+struct LoadBalancer_39 { }
+impl LoadBalancer_39 { fn new ( ) -> Self { } }
+struct Cluster_40 { }
+impl Cluster_40 { fn new ( ) -> Self { } }
+struct Node_41 { }
+impl Node_41 { fn new ( ) -> Self { } }
+struct Peer_42 { }
+impl Peer_42 { fn new ( ) -> Self { } }
+struct Agent_43 { }
+impl Agent_43 { fn new ( ) -> Self { } }
+struct Broker_44 { }
+impl Broker_44 { fn new ( ) -> Self { } }
+struct Producer_45 { }
+impl Producer_45 { fn new ( ) -> Self { } }
+struct Consumer_46 { }
+impl Consumer_46 { fn new ( ) -> Self { } }
+struct Publisher_47 { }
+impl Publisher_47 { fn new ( ) -> Self { } }
+struct Subscriber_48 { }
+impl Subscriber_48 { fn new ( ) -> Self { } }
+struct Listener_49 { }
+impl Listener_49 { fn new ( ) -> Self { } }
+struct Handler_50 { }
+impl Handler_50 { fn new ( ) -> Self { } }
+struct Controller_51 { }
+impl Controller_51 { fn new ( ) -> Self { } }
+struct Service_52 { }
+impl Service_52 { fn new ( ) -> Self { } }
+struct Repository_53 { }
+impl Repository_53 { fn new ( ) -> Self { } }
+struct Entity_54 { }
+impl Entity_54 { fn new ( ) -> Self { } }
+struct Model_55 { }
+impl Model_55 { fn new ( ) -> Self { } }
+struct View_56 { }
+impl View_56 { fn new ( ) -> Self { } }
+struct Presenter_57 { }
+impl Presenter_57 { fn new ( ) -> Self { } }
+struct Adapter_58 { }
+impl Adapter_58 { fn new ( ) -> Self { } }
+struct Facade_59 { }
+impl Facade_59 { fn new ( ) -> Self { } }
+struct Decorator_60 { }
+impl Decorator_60 { fn new ( ) -> Self { } }
+struct Observer_61 { }
+impl Observer_61 { fn new ( ) -> Self { } }
+struct Iterator_62 { }
+impl Iterator_62 { fn new ( ) -> Self { } }
+struct Visitor_63 { }
+impl Visitor_63 { fn new ( ) -> Self { } }
+struct State_64 { }
+impl State_64 { fn new ( ) -> Self { } }
+struct Template_65 { }
+impl Template_65 { fn new ( ) -> Self { } }
+struct Builder_66 { }
+impl Builder_66 { fn new ( ) -> Self { } }
+struct Singleton_67 { }
+impl Singleton_67 { fn new ( ) -> Self { } }
+struct Prototype_68 { }
+impl Prototype_68 { fn new ( ) -> Self { } }
+struct Bridge_69 { }
+impl Bridge_69 { fn new ( ) -> Self { } }
+struct Composite_70 { }
+impl Composite_70 { fn new ( ) -> Self { } }
+struct Flyweight_71 { }
+impl Flyweight_71 { fn new ( ) -> Self { } }
+struct Memento_72 { }
+impl Memento_72 { fn new ( ) -> Self { } }
+struct Mediator_73 { }
+impl Mediator_73 { fn new ( ) -> Self { } }
+struct Chain_74 { }
+impl Chain_74 { fn new ( ) -> Self { } }
+struct Interpreter_75 { }
+impl Interpreter_75 { fn new ( ) -> Self { } }
+struct Validator_76 { }
+impl Validator_76 { fn new ( ) -> Self { } }
+struct Sanitizer_77 { }
+impl Sanitizer_77 { fn new ( ) -> Self { } }
+struct Encoder_78 { }
+impl Encoder_78 { fn new ( ) -> Self { } }
+struct Decoder_79 { }
+impl Decoder_79 { fn new ( ) -> Self { } }
+struct Compressor_80 { }
+impl Compressor_80 { fn new ( ) -> Self { } }
+struct Decompressor_81 { }
+impl Decompressor_81 { fn new ( ) -> Self { } }
+struct Encrypter_82 { }
+impl Encrypter_82 { fn new ( ) -> Self { } }
+struct Decrypter_83 { }
+impl Decrypter_83 { fn new ( ) -> Self { } }
+struct Signer_84 { }
+impl Signer_84 { fn new ( ) -> Self { } }
+struct Verifier_85 { }
+impl Verifier_85 { fn new ( ) -> Self { } }
+struct Generator_86 { }
+impl Generator_86 { fn new ( ) -> Self { } }
+struct Allocator_87 { }
+impl Allocator_87 { fn new ( ) -> Self { } }
+struct Collector_88 { }
+impl Collector_88 { fn new ( ) -> Self { } }
+struct Inspector_89 { }
+impl Inspector_89 { fn new ( ) -> Self { } }
+struct Analyzer_90 { }
+impl Analyzer_90 { fn new ( ) -> Self { } }
+struct Profiler_91 { }
+impl Profiler_91 { fn new ( ) -> Self { } }
+struct Debugger_92 { }
+impl Debugger_92 { fn new ( ) -> Self { } }
+struct Tracer_93 { }
+impl Tracer_93 { fn new ( ) -> Self { } }
+struct Monitor_94 { }
+impl Monitor_94 { fn new ( ) -> Self { } }
+struct Notifier_95 { }
+impl Notifier_95 { fn new ( ) -> Self { } }
+struct Broadcaster_96 { }
+impl Broadcaster_96 { fn new ( ) -> Self { } }
+struct Receiver_97 { }
+impl Receiver_97 { fn new ( ) -> Self { } }
+struct Transmitter_98 { }
+impl Transmitter_98 { fn new ( ) -> Self { } }
+struct Repeater_99 { }
+impl Repeater_99 { fn new ( ) -> Self { } }
+struct Aggregator_100 { }
+impl Aggregator_100 { fn new ( ) -> Self { } }
+struct Filter_101 { }
+impl Filter_101 { fn new ( ) -> Self { } }
+struct Transformer_102 { }
+impl Transformer_102 { fn new ( ) -> Self { } }
+struct Reducer_103 { }
+impl Reducer_103 { fn new ( ) -> Self { } }
+struct Mapper_104 { }
+impl Mapper_104 { fn new ( ) -> Self { } }
+struct Sorter_105 { }
+impl Sorter_105 { fn new ( ) -> Self { } }
+struct Searcher_106 { }
+impl Searcher_106 { fn new ( ) -> Self { } }
+struct Indexer_107 { }
+impl Indexer_107 { fn new ( ) -> Self { } }
+struct Storage_108 { }
+impl Storage_108 { fn new ( ) -> Self { } }
+struct Locker_109 { }
+impl Locker_109 { fn new ( ) -> Self { } }

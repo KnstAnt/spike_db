@@ -1,0 +1,165 @@
+fn inspect_0 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_0 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_0 { panic ! ( ) ; }
+fn inspect_1 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_1 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_1 { panic ! ( ) ; }
+fn inspect_2 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_2 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_2 { panic ! ( ) ; }
+fn inspect_3 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_3 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_3 { panic ! ( ) ; }
+fn inspect_4 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_4 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_4 { panic ! ( ) ; }
+fn inspect_5 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_5 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_5 { panic ! ( ) ; }
+fn inspect_6 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_6 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_6 { panic ! ( ) ; }
+fn inspect_7 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_7 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_7 { panic ! ( ) ; }
+fn inspect_8 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_8 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_8 { panic ! ( ) ; }
+fn inspect_9 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_9 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_9 { panic ! ( ) ; }
+fn inspect_10 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_10 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_10 { panic ! ( ) ; }
+fn inspect_11 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_11 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_11 { panic ! ( ) ; }
+fn inspect_12 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_12 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_12 { panic ! ( ) ; }
+fn inspect_13 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_13 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_13 { panic ! ( ) ; }
+fn inspect_14 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_14 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_14 { panic ! ( ) ; }
+fn inspect_15 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_15 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_15 { panic ! ( ) ; }
+fn inspect_16 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_16 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_16 { panic ! ( ) ; }
+fn inspect_17 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_17 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_17 { panic ! ( ) ; }
+fn inspect_18 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_18 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_18 { panic ! ( ) ; }
+fn inspect_19 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_19 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_19 { panic ! ( ) ; }
+fn inspect_20 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_20 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_20 { panic ! ( ) ; }
+fn inspect_21 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_21 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_21 { panic ! ( ) ; }
+fn inspect_22 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_22 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_22 { panic ! ( ) ; }
+fn inspect_23 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_23 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_23 { panic ! ( ) ; }
+fn inspect_24 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_24 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_24 { panic ! ( ) ; }
+fn inspect_25 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_25 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_25 { panic ! ( ) ; }
+fn inspect_26 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_26 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_26 { panic ! ( ) ; }
+fn inspect_27 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_27 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_27 { panic ! ( ) ; }
+fn inspect_28 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_28 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_28 { panic ! ( ) ; }
+fn inspect_29 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_29 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_29 { panic ! ( ) ; }
+fn inspect_30 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_30 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_30 { panic ! ( ) ; }
+fn inspect_31 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_31 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_31 { panic ! ( ) ; }
+fn inspect_32 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_32 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_32 { panic ! ( ) ; }
+fn inspect_33 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_33 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_33 { panic ! ( ) ; }
+fn inspect_34 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_34 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_34 { panic ! ( ) ; }
+fn inspect_35 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_35 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_35 { panic ! ( ) ; }
+fn inspect_36 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_36 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_36 { panic ! ( ) ; }
+fn inspect_37 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_37 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_37 { panic ! ( ) ; }
+fn inspect_38 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_38 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_38 { panic ! ( ) ; }
+fn inspect_39 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_39 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_39 { panic ! ( ) ; }
+fn inspect_40 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_40 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_40 { panic ! ( ) ; }
+fn inspect_41 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_41 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_41 { panic ! ( ) ; }
+fn inspect_42 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_42 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_42 { panic ! ( ) ; }
+fn inspect_43 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_43 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_43 { panic ! ( ) ; }
+fn inspect_44 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_44 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_44 { panic ! ( ) ; }
+fn inspect_45 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_45 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_45 { panic ! ( ) ; }
+fn inspect_46 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_46 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_46 { panic ! ( ) ; }
+fn inspect_47 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_47 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_47 { panic ! ( ) ; }
+fn inspect_48 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_48 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_48 { panic ! ( ) ; }
+fn inspect_49 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_49 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_49 { panic ! ( ) ; }
+fn inspect_50 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_50 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_50 { panic ! ( ) ; }
+fn inspect_51 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_51 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_51 { panic ! ( ) ; }
+fn inspect_52 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_52 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_52 { panic ! ( ) ; }
+fn inspect_53 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_53 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_53 { panic ! ( ) ; }
+fn inspect_54 < 'a > ( data : & 'a String ) -> & 'a String { }
+fn analyze_54 < 'a > ( fallback : & 'a str , source : & 'a str ) -> & 'a str { }
+if failure_54 { panic ! ( ) ; }
