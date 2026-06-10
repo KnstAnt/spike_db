@@ -10,7 +10,7 @@ enum DbCommand {
     ApplyReinforcement { is_success: bool },
     SleepAndPrune,
     InspectRequest { token: String, tx_response: crossbeam_channel::Sender<Option<(u64, f32)>> },
-    GenerateTrail { start_token: String, tx_response: crossbeam_channel::Sender<Vec<String>> },
+    GenerateTrail { start_token: String, context_tokens: Vec<String>, tx_response: crossbeam_channel::Sender<Vec<String>> },
     Shutdown,
 }
 
@@ -57,8 +57,8 @@ impl SpikeDB {
                                 let res = network.get_strongest_prediction(id);
                                 let _ = tx_response.send(res);
                             }
-                            Ok(DbCommand::GenerateTrail { start_token, tx_response }) => {
-                                let trail = network.generate_associative_trail(&start_token);
+                            Ok(DbCommand::GenerateTrail { start_token, context_tokens, tx_response }) => {
+                                let trail = network.generate_autonomous_mutation(&start_token, &context_tokens);
                                 let _ = tx_response.send(trail);
                             }
                             Ok(DbCommand::Shutdown) | Err(_) => {
@@ -105,10 +105,11 @@ impl SpikeDB {
         }
     }
 
-    pub fn generate_code_hypothesis(&self, start_token: &str) -> Vec<String> {
+    pub fn generate_code_hypothesis(&self, start_token: &str, context_tokens: Vec<String>) -> Vec<String> {
         let (tx_response, rx_response) = crossbeam_channel::bounded::<Vec<String>>(1);
         let _ = self.tx.send(DbCommand::GenerateTrail {
             start_token: start_token.to_string(),
+            context_tokens,
             tx_response,
         });
         rx_response.recv().unwrap_or_default()

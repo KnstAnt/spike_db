@@ -395,28 +395,59 @@ impl SpikingNetwork {
         }
         strongest_target
     }
-    /// ГЕНЕРАТИВНОЕ ЭХО: Сеть сама разворачивает ассоциативную цепочку токенов.
-    /// Начинает с заданного слова и бежит по сильнейшим синапсам, пока не встретит ';' 
-    /// или не исчерпает лимит длины, возвращая ГОТОВЫЙ вектор строк.
-    pub fn generate_associative_trail(&mut self, start_token: &str) -> Vec<String> {
+    /// ПОЛНОСТЬЮ АВТОНОМНЫЙ ГЕНЕРАТОР МУТАЦИЙ (БЕЗ ХАРДКОДА):
+    /// Сеть идет по цепочке кодов. Если она натыкается на узел, где 
+    /// предсказание синапса сталкивается со встречным импульсом контекста ошибки,
+    /// она сама переключает траекторию мысли на альтернативные пути исправления.
+    /// ПОЛНОСТЬЮ АВТОНОМНЫЙ РЕЗОНАНСНЫЙ ГЕНЕРАТОР (БЕЗ ХАРДКОДА)
+    /// Работает исключительно на числовых ID, исключая строковые тупики.
+    pub fn generate_autonomous_mutation(&mut self, start_token: &str, context_strings: &[String]) -> Vec<String> {
         let mut trail = Vec::new();
         
-        // Переводим стартовое слово в ID нейрона через словарь
+        // Переводим весь текстовый контекст дефекта в числовые ID один раз на старте
+        let forbidden_ids: Vec<u64> = context_strings.iter()
+            .map(|token| self.get_or_create_token_neuron(token))
+            .collect();
+
         let mut current_id = self.get_or_create_token_neuron(start_token);
         trail.push(start_token.to_string());
 
-        // Ограничитель, чтобы сеть не ушла в бесконечный генеративный цикл (биологический лимит)
-        for _ in 0..15 {
-            // 1. Ищем сильнейшего последователя для текущего нейрона
-            if let Some((next_id, _weight)) = self.get_strongest_prediction(current_id) {
-                
-                // Взводим tag_trace у синапса "на лету" — фиксируем траекторию мысли
+        let current_t = self.current_tick;
+
+        for _ in 0..20 {
+            let prefix = Self::encode_prefix_key(current_id);
+            let mut strongest_target = None;
+            let mut max_score = -9999.0; // Стартуем с глубокого минуса
+
+            for result in self.synapses.scan_prefix(&prefix) {
+                if let Ok((key_bytes, val_bytes)) = result {
+                    let (synapse, _): (Synapse, usize) = bincode::decode_from_slice(&val_bytes, bincode::config::standard()).unwrap();
+                    let (_, target_id) = Self::decode_synapse_key(&key_bytes);
+
+                    // Считаем балл на основе синаптического резонанса
+                    let mut score = synapse.calculate_resonance_score();
+
+                    // ЕСТЕСТВЕННОЕ ТОРМОЖЕНИЕ: Мгновенное сравнение u64 чисел.
+                    // Если цель синапса находится в списке запрещенного контекста ошибки —
+                    // этот путь аппаратно блокируется на уровне математики балла.
+                    if forbidden_ids.contains(&target_id) {
+                        score -= 50.0; 
+                    }
+
+                    if score > max_score {
+                        max_score = score;
+                        strongest_target = Some(target_id);
+                    }
+                }
+            }
+
+            if let Some(next_id) = strongest_target {
+                // Фиксируем траекторию мысли в Sled
                 let key = Self::encode_synapse_key(current_id, next_id);
-                let current_t = self.current_tick;
                 let _ = self.synapses.update_and_fetch(&key, |old_bytes| {
                     if let Some(bytes) = old_bytes {
                         let (mut synapse, _): (Synapse, usize) = bincode::decode_from_slice(bytes, bincode::config::standard()).unwrap();
-                        synapse.trigger(current_t); // Зажигаем след активности
+                        synapse.trigger(current_t);
                         let updated_bytes = bincode::encode_to_vec(&synapse, bincode::config::standard()).unwrap();
                         Some(updated_bytes)
                     } else {
@@ -424,37 +455,35 @@ impl SpikingNetwork {
                     }
                 }).unwrap();
 
-                // 2. Пытаемся найти текстовое имя этого нейрона в словаре обратным поиском
-                // (Чтобы не усложнять, ищем по дереву vocabulary)
-                let mut token_name = format!("id_{}", next_id); // Фаллбэк, если это скрытый мета-нейрон
-                for result in self.vocabulary.iter() {
-                    if let Ok((word_bytes, id_bytes)) = result {
-                        use byteorder::{BigEndian, ReadBytesExt};
-                        let mut rdr = &id_bytes[..];
-                        if rdr.read_u64::<BigEndian>().unwrap() == next_id {
-                            token_name = String::from_utf8_lossy(&word_bytes).to_string();
-                            break;
-                        }
-                    }
-                }
-
-                // Добавляем слово в цепочку
+                let token_name = self.reverse_lookup_token(next_id);
                 trail.push(token_name.clone());
 
-                // ТЕРМИНАЛЬНАЯ СТЕНА: Если мысль добежала до точки с запятой,
-                // значит синтаксическая конструкция завершена!
                 if token_name == ";" {
                     break;
                 }
-
                 current_id = next_id;
             } else {
-                break; // Если связей больше нет — мысль затухла
+                break;
             }
         }
 
-        // Продвигаем глобальный тик, так как генерация заняла время мозга
         self.current_tick += 1;
         trail
-    }    
+    }
+
+    /// Вспомогательный обратный поиск имени токена по его ID в Sled
+    fn reverse_lookup_token(&self, target_id: u64) -> String {
+        let mut token_name = format!("id_{}", target_id);
+        for result in self.vocabulary.iter() {
+            if let Ok((word_bytes, id_bytes)) = result {
+                use byteorder::{BigEndian, ReadBytesExt};
+                let mut rdr = &id_bytes[..];
+                if rdr.read_u64::<BigEndian>().unwrap() == target_id {
+                    token_name = String::from_utf8_lossy(&word_bytes).to_string();
+                    break;
+                }
+            }
+        }
+        token_name
+    }  
 }

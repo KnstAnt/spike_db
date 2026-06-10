@@ -17,7 +17,6 @@ pub struct NeuronState {
     pub neuron_type: NeuronType,
 }
 
-
 impl Synapse {
     pub fn trigger(&mut self, current_tick: u64) {
         self.decay_tag_lazy(current_tick);
@@ -32,6 +31,12 @@ impl Synapse {
             self.tag_trace *= (-delta_t / cfg.tag_tau).exp();
             self.last_used_tick = current_tick;
         }
+    }
+
+    /// ИСПРАВЛЕНИЕ: Метод расчета резонанса находится строго внутри impl Synapse!
+    pub fn calculate_resonance_score(&self) -> f32 {
+        // Сила резонанса синапса = базовый вес + его краткосрочный химический след
+        self.weight + self.tag_trace
     }
 }
 
