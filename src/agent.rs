@@ -63,7 +63,7 @@ impl SpikeCompilerAgent {
         fs::write(&self.target_file, hypothesis).expect("Ошибка записи в файл");
     }
 
-    /// ГЛАВНЫЙ ЦИКЛ АВТОНОМНОГО МЫШЛЕНИЯ И АДАПТАЦИИ
+        /// ГЛАВНЫЙ ЦИКЛ АВТОНОМНОГО МЫШЛЕНИЯ И АДАПТАЦИИ
     pub fn perceive_and_adapt(&mut self) -> String {
         // Проверяем среду компилятором
         match self.run_cargo_check() {
@@ -91,35 +91,37 @@ impl SpikeCompilerAgent {
                 if !current_token.is_empty() { context_tokens.push(current_token); }
 
                 // =============================================================
-                // НАКАЧКА КОНТЕКСТА И ЕСТЕСТВЕННЫЙ РЕЗОНАНС
+                // НАКАЧКА И АВТОНОМНЫЙ РЕЗОНАНС
                 // =============================================================
-                println!("[AGENT]: Накачка сети контекстом дефекта...");
                 for token in &context_tokens {
                     self.db.inject_token(token, 1.2);
                 }
-
-                // ИСПРАВЛЕНИЕ: Гарантируем, что Ядро полностью прокрутит тики
-                // и асинхронно обработает лавину контекста в ОЗУ, создав очаги резонанса,
-                // перед тем как мы попросим его сгенерировать мутацию!
-                self.db.wait_until_flushed();
+                std::thread::sleep(std::time::Duration::from_millis(40));
 
                 // Просим сеть саму сгенерировать мутацию на основе коллизии токов
-                println!("[AGENT]: Запрос автономной гипотезы от SpikeDB...");
                 let generated_tokens = self.db.generate_code_hypothesis("let", context_tokens.clone());
-                let hypothesis_code = generated_tokens.join(" ");
+                
+                // =============================================================
+                // УМНАЯ ТОКЕНИЗАЦИЯ И РАСПРЯМЛЕНИЕ ЧАНКОВ (ИСПРАВЛЕНИЕ)
+                // Поскольку рекурсивный поиск NeuronOrigin выдает фразы с пробелами,
+                // мы разрываем их на атомарные лексемы и собираем строго через 1 пробел.
+                // =============================================================
+                let raw_hypothesis = generated_tokens.join(" ");
+                let flat_tokens: Vec<&str> = raw_hypothesis.split_whitespace().collect();
+                let hypothesis_code = flat_tokens.join(" ");
 
-                // ПРИМЕНЕНИЕ ГИПОТЕЗЫ
+                // ПРИМЕНЕНИЕ ГИПОТЕЗЫ К ВИРТУАЛЬНОМУ ФАЙЛУ
                 self.apply_hypothesis(&hypothesis_code);
                 std::thread::sleep(std::time::Duration::from_millis(20));
 
                 // Проверяем, исправило ли это ситуацию
                 match self.run_cargo_check() {
                     Ok(_) => {
-                        self.db.approve_success(true); // Успех, закрепляем синапсы!
+                        self.db.approve_success(true); // УСПЕХ: Связи верной мутации закреплены
                         hypothesis_code
                     }
                     Err(_) => {
-                        self.db.approve_success(false); // Штраф, откат
+                        self.db.approve_success(false); // ШТРАФ: Откат к исходному дефекту
                         self.apply_hypothesis(&broken_line);
                         broken_line
                     }
