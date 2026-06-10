@@ -7,7 +7,7 @@ use std::time::Instant;
 #[test]
 fn run_performance_stress_test() {
     println!("\n============================================================");
-    println!("=== ЗАПУСК ЧИСТОГО СТРЕСС-ТЕСТА БЫСТРОДЕЙСТВИЯ (БЕЗ SLEEP) ===");
+    println!("=== ЗАПУСК ПАКЕТНОГО СТРЕСС-ТЕСТА БЫСТРОДЕЙСТВИЯ (RAM) ===");
     println!("============================================================");
 
     let mut config = BrainConfig::default();
@@ -32,7 +32,7 @@ fn run_performance_stress_test() {
 
     let mut total_lines = 0;
     let mut total_tokens = 0;
-    let mut all_tokens_to_inject = Vec::new();
+    let mut all_lines_to_inject: Vec<Vec<String>> = Vec::new();
 
     let special_chars = ['=', ';', '{', '}', '(', ')', '+', '-', '>', '<', ':', ',', '\'', '&', '!'];
     for path in &file_paths {
@@ -42,68 +42,51 @@ fn run_performance_stress_test() {
             if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
             total_lines += 1;
 
+            let mut line_tokens = Vec::new();
             let mut current_token = String::new();
             for ch in trimmed.chars() {
                 if ch.is_whitespace() {
-                    if !current_token.is_empty() {
-                        all_tokens_to_inject.push(current_token.clone());
-                        total_tokens += 1;
-                        current_token.clear();
-                    }
+                    if !current_token.is_empty() { line_tokens.push(current_token.clone()); total_tokens += 1; current_token.clear(); }
                 } else if special_chars.contains(&ch) {
-                    if !current_token.is_empty() {
-                        all_tokens_to_inject.push(current_token.clone());
-                        total_tokens += 1;
-                        current_token.clear();
-                    }
-                    all_tokens_to_inject.push(ch.to_string());
+                    if !current_token.is_empty() { line_tokens.push(current_token.clone()); total_tokens += 1; current_token.clear(); }
+                    line_tokens.push(ch.to_string());
                     total_tokens += 1;
                 } else {
                     current_token.push(ch);
                 }
             }
-            if !current_token.is_empty() {
-                all_tokens_to_inject.push(current_token);
-                total_tokens += 1;
-            }
+            if !current_token.is_empty() { line_tokens.push(current_token); total_tokens += 1; }
+            all_lines_to_inject.push(line_tokens);
         }
     }
 
-    println!("[БЕНЧМАРК]: Массив данных успешно загружен в ОЗУ теста.");
-    println!("            Всего уникальных строк кода: {}", total_lines);
-    println!("            Всего импульсов-токенов для накачки: {}", total_tokens);
+    println!("[БЕНЧМАРК]: Весь датасет предварительно упакован в ОЗУ.");
     println!("------------------------------------------------------------");
-    println!("[БЕНЧМАРК]: Чистая lock-free лавина запущена...");
 
-    // =================================================================
-    // ИСТИННЫЙ ЗАМЕР ВРЕМЕНИ В ОЗУ
-    // =================================================================
     let start_time = Instant::now();
 
-    // Залпом выстреливаем все 18 000 токенов в канал на максимальной скорости CPU!
-    for token in all_tokens_to_inject {
-        db.inject_token(&token, 1.2);
+    // Залпом отправляем строки пакетно
+    for line in all_lines_to_inject {
+        db.inject_string_context(line, 1.2, Some(true));
     }
 
-    // Дофаминовое подкрепление
-    db.approve_success(true);
+    // ИСПРАВЛЕНИЕ: Каноничный барьер ожидания
+    db.wait_flush_barrier();
 
-    // Только ТЕПЕРЬ, когда эволюция зафиксирована, ложимся спать
     db.trigger_sleep();
     
     // Синхронизируем окончание сна
-    let _finish_sync = db.inspect_prediction("let");
+    db.wait_flush_barrier();
 
     let duration = start_time.elapsed();
-    // =================================================================
 
     let duration_secs = duration.as_secs_f32();
     let duration_millis = duration.as_millis();
     let tokens_per_sec = total_tokens as f32 / duration_secs;
 
     println!("------------------------------------------------------------");
-    println!("=== РЕЗУЛЬТАТЫ ИСТИННОГО БЕНЧМАРКА SpikeMemory ===");
-    println!("Затрачено чистого процессорного времени: {} мс ({:.4} сек)", duration_millis, duration_secs);
+    println!("=== РЕЗУЛЬТАТЫ ПАКЕТНОГО БЕНЧМАРКА SpikeMemory ===");
+    println!("Затрачено чистого времени: {} мс ({:.4} сек)", duration_millis, duration_secs);
     println!("Реальная скорость сквозного мышления: {:.2} токенов/сек", tokens_per_sec);
     println!("============================================================");
 

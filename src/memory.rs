@@ -42,16 +42,27 @@ impl SpikeMemory {
         id
     }
 
-    pub fn set_synapse(&mut self, source_id: u64, target_id: u64, weight: f32) {
+   /// Прокладывает синапс в RAM и принудительно взводит его краткосрочный след активности
+      /// Прокладывает или активирует существующий синапс в ОЗУ, 
+    /// взводя его краткосрочный след пластичности на текущий тик времени.
+    pub fn set_synapse(&mut self, source_id: u64, target_id: u64, weight: f32, current_tick: u64) {
         let source_idx = source_id as usize;
+        
         if let Some(synapse) = self.adj_list[source_idx].iter_mut().find(|s| s.target_id == target_id) {
             synapse.weight = weight;
+            
+            // ИСПРАВЛЕНИЕ: При повторном проходе или подкреплении строки 
+            // мы обязаны взвести tag_trace существующей связи и обновить время её использования!
+            // Это позволит Критику мгновенно увидеть и зацементировать этот путь.
+            synapse.tag_trace = (synapse.tag_trace + 0.5).min(1.0);
+            synapse.last_used_tick = current_tick;
         } else {
+            // Создание новой связи (остается без изменений)
             self.adj_list[source_idx].push(Synapse {
                 target_id,
                 weight,
-                tag_trace: 0.0,
-                last_used_tick: 0,
+                tag_trace: 1.0, 
+                last_used_tick: current_tick,
             });
         }
     }
@@ -89,4 +100,18 @@ impl SpikeMemory {
             format!("unknown_id_{}", target_id)
         }
     }
+    /// Рекурсивно раскручивает граф происхождения чанка и возвращает ID 
+    /// самого последнего (терминального) сенсорного токена, которым заканчивается фраза.
+    pub fn get_chunk_terminal_token_id(&self, target_id: u64) -> u64 {
+        if let Some(neuron) = self.neurons.get(target_id as usize) {
+            match &neuron.origin {
+                // Если это базовое слово — это и есть искомый ID
+                NeuronOrigin::BaseToken(_) => target_id,
+                // Если это чанк — рекурсивно ныряем в правое (последнее) плечо последовательности!
+                NeuronOrigin::ChunkSequence(_, id_b) => self.get_chunk_terminal_token_id(*id_b),
+            }
+        } else {
+            target_id
+        }
+    }    
 }

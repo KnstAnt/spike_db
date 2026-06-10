@@ -19,7 +19,6 @@ impl SpikeCompilerAgent {
         }
     }
 
-    /// Восприятие среды компилятора (с поддержкой моков для тестов)
     pub fn run_cargo_check(&self) -> Result<String, String> {
         if self.is_test_mode {
             if self.mock_error_code.is_empty() || self.mock_error_code == "Success" {
@@ -47,7 +46,6 @@ impl SpikeCompilerAgent {
         Err("UnknownError".to_string())
     }
 
-    /// Чтение первой (целевой) строки сломанного файла
     pub fn read_target_line(&self) -> String {
         fs::read_to_string(&self.target_file)
             .unwrap_or_default()
@@ -57,23 +55,18 @@ impl SpikeCompilerAgent {
             .to_string()
     }
 
-    /// Перезапись целевой строки в файле новой гипотезой
     pub fn apply_hypothesis(&self, hypothesis: &str) {
         fs::write(&self.target_file, hypothesis).expect("Ошибка записи в файл");
     }
 
-    /// ГЛАВНЫЙ ЦИКЛ АВТОНОМНОГО МЫШЛЕНИЯ И АДАПТАЦИИ
+    /// ГЛАВНЫЙ ЦИКЛ АВТОНОМНОГО МЫШЛЕНИЯ АГЕНТА (ПАКЕТНЫЙ КОНТУР)
     pub fn perceive_and_adapt(&mut self) -> String {
-        // Проверяем среду компилятором
         match self.run_cargo_check() {
-            Ok(_) => {
-                let current_code = self.read_target_line();
-                current_code
-            }
+            Ok(_) => self.read_target_line(),
             Err(error_code) => {
                 let broken_line = self.read_target_line();
                 
-                // Собираем массив токенов контекста коллизии
+                // Нарезаем ломаную строку на лексемы
                 let mut context_tokens = vec![error_code.clone()];
                 let special_chars = ['=', ';', '{', '}', '(', ')', '.', ':', ',', '\'', '&', '!'];
                 let mut current_token = String::new();
@@ -94,39 +87,54 @@ impl SpikeCompilerAgent {
                         current_token.push(ch);
                     }
                 }
-                
-                // ИСПРАВЛЕНИЕ: Переменная теперь гарантированно находится внутри области видимости
                 if !current_token.is_empty() { 
                     context_tokens.push(current_token); 
                 }
 
                 // =============================================================
-                // ДИГНОСТИЧЕСКАЯ ПОШТУЧНАЯ НАКАЧКА КОНТЕКСТА
-                // ИСПРАВЛЕНИЕ: Возвращаем чистый поштучный inject_token в цикле
+                // СИНХРОННАЯ НАКАЧКА ДЕФЕКТА
+                // Передаем пачку контекста. Третий параметр Some(false), чтобы 
+                // активировать латеральные синаптические маркеры tag_trace,
+                // но при этом не начислять ложный дофаминовый вес!
                 // =============================================================
-                println!("[AGENT]: Накачка сети контекстом дефекта...");
-                for token in &context_tokens {
-                    self.db.inject_token(token, 1.2);
-                }
+                println!("[AGENT]: Пакетная инъекция контекста дефекта в ОЗУ...");
+                self.db.inject_string_context(context_tokens.clone(), 1.2, Some(false));
+                
+                // Гарантируем, что импульсы контекста полностью распределились по графу
+                self.db.wait_flush_barrier();
 
-                // Просим сеть саму сгенерировать мутацию на основе коллизии токов
+                // Просим Rayon-ядро сгенерировать резонирующую мутацию
+                println!("[AGENT]: Запрос автономной резонансной гипотезы...");
                 let generated_tokens = self.db.generate_code_hypothesis("let", context_tokens.clone());
-
+                
                 let raw_hypothesis = generated_tokens.join(" ");
                 let flat_tokens: Vec<&str> = raw_hypothesis.split_whitespace().collect();
                 let hypothesis_code = flat_tokens.join(" ");
 
-                // ПРИМЕНЕНИЕ ГИПОТЕЗЫ
+                // Применяем решение к виртуальному файлу
                 self.apply_hypothesis(&hypothesis_code);
 
-                // Проверяем, исправило ли это ситуацию
                 match self.run_cargo_check() {
                     Ok(_) => {
-                        self.db.approve_success(true); // Успех, закрепляем синапсы!
+                        println!("[AGENT]: Компилятор удовлетворен! Дофаминовое закрепление мутации.");
+                        let flat_strings: Vec<String> = hypothesis_code
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect();
+                        
+                        self.db.inject_string_context(flat_strings, 1.2, Some(true));
+                        self.db.wait_flush_barrier();
                         hypothesis_code
                     }
                     Err(_) => {
-                        self.db.approve_success(false); // Штраф, откат
+                        println!("[AGENT]: Мутация отвергнута компилятором. Штрафной откат.");
+                        let flat_strings: Vec<String> = hypothesis_code
+                            .split_whitespace()
+                            .map(|s| s.to_string())
+                            .collect();
+                        
+                        self.db.inject_string_context(flat_strings, 1.2, Some(false));
+                        self.db.wait_flush_barrier();
                         self.apply_hypothesis(&broken_line);
                         broken_line
                     }

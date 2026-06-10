@@ -1,5 +1,4 @@
 use spikedb::database_manager::SpikeDB;
-use spikedb::config::BrainConfig;
 
 #[test]
 fn test_pure_deterministic_resonance() {
@@ -8,47 +7,30 @@ fn test_pure_deterministic_resonance() {
     println!("============================================================");
 
     let db = SpikeDB::open("deterministic_sandbox");
-    // (Убрана стартовая пауза)
 
-    // -----------------------------------------------------------------
-    // ОБУЧЕНИЕ: Строим две конкурирующие дороги в ОЗУ со скоростью CPU
-    // -----------------------------------------------------------------
+    // ФАЗА 1: Закладываем глубокий, прочный фундамент правильного синтаксиса
     println!(" Обучение правильному синтаксису: 'fn' -> 'correct_name'");
-    for _ in 0..5 {
-        db.inject_token("fn", 1.2);
-        db.inject_token("correct_name", 1.2);
-        db.inject_token(";", 1.2);
+    for _ in 0..12 {
+        let line = vec!["fn".to_string(), "correct_name".to_string(), ";".to_string()];
+        // Передаем Some(true) — Критик мгновенно увеличивает вес выросших чанков!
+        db.inject_string_context(line, 1.2, Some(true));
     }
-    
-    // БАРЬЕР 1: Ждем, пока пачка токенов обучения полностью превратится в граф в ОЗУ
-    let _обучение_завершено = db.inspect_prediction("fn");
-    
-    db.approve_success(true); // Хвалим горячие синапсы!
-    
-    // БАРЬЕР 2: Ждем, пока Критик завершит начисление дофамина
-    let _критика_завершена = db.inspect_prediction("fn");
 
+    // ФАЗА 2: Вносим контролируемый дефект (шум среды)
     println!(" Появление случайного шума (ошибки): 'fn' -> 'analyze_13'");
-    db.inject_token("fn", 1.2);
-    db.inject_token("analyze_13", 1.2);
-    db.inject_token(";", 1.2);
+    let noisy_line = vec!["fn".to_string(), "analyze_13".to_string(), ";".to_string()];
+    // Передаем None — ложный путь не получит дофаминового подкрепления
+    db.inject_string_context(noisy_line, 1.2, None);
 
-    // БАРЬЕР 3: Ждем, пока шум запишется в ОЗУ
-    let _шум_записан = db.inspect_prediction("fn");
-
+    // ФАЗА 3: Ночной гомеостаз сна. Метод trigger_sleep теперь сам заблокирует 
+    // поток теста до полного завершения прунинга графа в ОЗУ!
     println!(" Погружение микро-сети в Контрастный Сон...");
     db.trigger_sleep();
-    
-    // БАРЬЕР 4: Экспертиза начнется строго после того, как сон завершится!
-    let _сон_завершен = db.inspect_prediction("fn");
 
     // -----------------------------------------------------------------
-    // ЭКЗАМЕН МЫШЛЕНИЯ
+    // ЭКЗАМЕН МЫШЛЕНИЯ И ПОЛНЫЙ ВЫВОД ВЕСОВ ТЕЛЕМЕТРИИ
     // -----------------------------------------------------------------
     println!("\n ЗАПУСК ЭКСПЕРТИЗЫ: Анализ свободных ассоциаций токена 'fn'...");
-
-
-    
     let forbidden_context: Vec<String> = Vec::new();
     let trail = db.generate_code_hypothesis("fn", forbidden_context);
 
@@ -56,6 +38,9 @@ fn test_pure_deterministic_resonance() {
     
     assert!(trail.contains(&"correct_name".to_string()), 
         "Аномалия! Сеть даже в микро-тесте выбрала шум вместо консолидированного веса!");
+        
+    assert!(trail.contains(&";".to_string()), 
+        "Аномалия! Сквозное движение мысли не смогло долететь до терминальной точки с запятой!");
 
     println!("============================================================");
 }

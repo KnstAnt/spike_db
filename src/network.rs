@@ -71,7 +71,7 @@ impl SpikingNetwork {
                 synapse.decay_tag_lazy(current_t, cfg.tag_tau);
                 let decayed_tag = synapse.tag_trace;
 
-                if decayed_tag > 0.001 {
+                if decayed_tag > 0.0001 {
                     let old_weight = synapse.weight;
                     if is_success {
                         synapse.weight += decayed_tag * cfg.learning_rate;
@@ -191,17 +191,39 @@ impl SpikingNetwork {
                     println!("   ⚡ СОВПАДЕНИЕ: '{}' -> '{}' | Текущий счетчик: {}/{}", 
                         old_name, new_name, count, cfg.coincidence_threshold);
 
-                    if *count == cfg.coincidence_threshold {
+                                        if *count == cfg.coincidence_threshold {
                         let meta_neuron_id = self.memory.create_meta_chunk(old_id, new_id);
-                        println!("\n✨ [МЕТА-ЭВОЛЮЦИЯ]: Преодолен порог совпадений! Рождение чанка '{} -> {}' с ID: {}", 
-                            old_name, new_name, meta_neuron_id);
                         
-                        self.memory.set_synapse(old_id, meta_neuron_id, 0.6);
-                        self.memory.set_synapse(new_id, meta_neuron_id, 0.6);
+                        println!("✨ [МЕТА-ЭВОЛЮЦИЯ]: Рождение чанка ID {} -> ID {} с новым ID: {}", 
+                            old_id, new_id, meta_neuron_id);
+                        
+                        // ИСПРАВЛЕНИЕ: Добавляем self.current_tick во все вызовы set_synapse
+                        self.memory.set_synapse(old_id, meta_neuron_id, 0.6, self.current_tick);
+                        self.memory.set_synapse(new_id, meta_neuron_id, 0.6, self.current_tick);
+
+                        if let Some(links) = self.memory.adj_list.get_mut(old_id as usize) {
+                            if let Some(s) = links.iter_mut().find(|s| s.target_id == meta_neuron_id) {
+                                s.last_used_tick = self.current_tick;
+                                s.tag_trace = 1.0;
+                            }
+                        }
+                        if let Some(links) = self.memory.adj_list.get_mut(new_id as usize) {
+                            if let Some(s) = links.iter_mut().find(|s| s.target_id == meta_neuron_id) {
+                                s.last_used_tick = self.current_tick;
+                                s.tag_trace = 1.0;
+                            }
+                        }
 
                         if let Some(old_neuron) = self.memory.neurons.get(old_id as usize) {
                             if let crate::models::NeuronOrigin::ChunkSequence(id_start, _) = old_neuron.origin {
-                                self.memory.set_synapse(id_start, new_id, 0.5);
+                                // ИСПРАВЛЕНИЕ: И здесь тоже добавляем self.current_tick
+                                self.memory.set_synapse(id_start, new_id, 0.5, self.current_tick);
+                                if let Some(links) = self.memory.adj_list.get_mut(id_start as usize) {
+                                    if let Some(s) = links.iter_mut().find(|s| s.target_id == new_id) {
+                                        s.last_used_tick = self.current_tick;
+                                        s.tag_trace = 1.0;
+                                    }
+                                }
                             }
                         }
                     }
@@ -260,113 +282,131 @@ impl SpikingNetwork {
 
         let mut current_id = match self.memory.lookup_token_id(start_token) {
             Some(id) => id,
-            None => return vec![start_token.to_string()],
+            None => {
+                println!("    ❌ КРИТИЧЕСКАЯ ТРАССИРОВКА: Стартовый токен '{}' отсутствует в словаре!", start_token);
+                return vec![start_token.to_string()];
+            }
         };
+        
         trail.push(start_token.to_string());
         visited_path.push(current_id);
 
-        for step in 0..20 {
+        println!("\n🔮 [ТРАССИРОВКА ЭКСПЕРТИЗЫ]: Начало генерации ассоциаций для '{}' (ID: {})", start_token, current_id);
+
+        for step in 0..10 {
             let mut strongest_target = None;
+            let mut max_score = -9999.0;
 
             if let Some(links) = self.memory.adj_list.get(current_id as usize) {
-                let path_ref = &visited_path;
-
-                // =============================================================
-                // ДИАГНОСТИКА ШАГА МЫШЛЕНИЯ
-                // =============================================================
                 let current_token_name = self.memory.reverse_lookup_token(current_id);
-                println!("\n🔍 [ИНСПЕКЦИЯ ШАГА {}]: Анализ путей из токена '{}' (ID: {})...", step, current_token_name, current_id);
-                
-                let mut sorted_links: Vec<(u64, String, f32, f32, f32)> = links.iter().map(|synapse| {
-                    let is_visited = path_ref.contains(&synapse.target_id);
-                    let local_tag = if is_visited { 1.0 } else { synapse.tag_trace };
+                println!("  📍 Шаг {}: Мы стоим на узле '{}' (ID: {}). Всего исходящих синапсов: {}", 
+                    step, current_token_name, current_id, links.len());
+
+                                // 1. ПОШАГОВАЯ ИНСПЕКЦИЯ ВСЕХ ПУТЕЙ (Обновление логики Anti-Loop)
+                for synapse in links.iter() {
+                    let is_visited = visited_path.contains(&synapse.target_id);
                     
-                    let mut score = synapse.weight + (local_tag * 1.5);
-                    
-                    // Заменяем внешнее замыкание на локальную lock-free проверку
-                    for &f_id in &forbidden_ids {
-                        if synapse.target_id == f_id {
-                            score -= cfg.spike_threshold * 50.0;
-                        }
+                    // ИСПРАВЛЕНИЕ: Если путь уже посещался, мы накладываем на него 
+                    // латеральное торможение (минус к баллу), заставляя мозг искать новые выходы!
+                    let mut score = synapse.weight + (synapse.tag_trace * 1.5);
+                    if is_visited {
+                        score -= cfg.spike_threshold * 20.0; // Жесткий рефрактерный штраф зацикливания
                     }
-                    
+
+                    for &f_id in &forbidden_ids {
+                        if synapse.target_id == f_id { score -= cfg.spike_threshold * 50.0; }
+                    }
+                    if let Some(bad_id) = bad_literal_id {
+                        if synapse.target_id == bad_id { score -= cfg.spike_threshold * 100.0; }
+                    }
+
                     let target_name = self.memory.reverse_lookup_token(synapse.target_id);
-                    (synapse.target_id, target_name, synapse.weight, local_tag, score)
-                }).collect();
-                
-                sorted_links.sort_by(|a, b| b.4.partial_cmp(&a.4).unwrap_or(std::cmp::Ordering::Equal));
-                
-                for (i, (t_id, t_name, w, tag, sc)) in sorted_links.iter().take(4).enumerate() {
-                    println!("    [{}] -> Цель: '{}' (ID: {}), Вес: {:.2}, Tag: {:.2} = БАЛЛ: {:.2}", 
-                        i + 1, t_name, t_id, w, tag, sc);
+                    // Передаем маркер зацикленности в лог для наглядности
+                    println!("      ➔ Дорога к: '{}' (ID: {}), Вес: {:.2}, Посещен: {} = БАЛЛ: {:.2}", 
+                        target_name, synapse.target_id, synapse.weight, is_visited, score);
                 }
 
-                // Основной параллельный расчет Rayon
+                // 2. ИСТИННЫЙ ПАРАЛЛЕЛЬНЫЙ ВЫБОР RAYON (С латеральным торможением)
+                let path_ref = &visited_path;
                 let best_match = links.par_iter()
                     .map(|synapse| {
                         let is_visited = path_ref.contains(&synapse.target_id);
-                        let local_tag = if is_visited { 1.0 } else { synapse.tag_trace };
+                        let mut score = synapse.weight + (synapse.tag_trace * 1.5);
                         
-                        let mut score = synapse.weight + (local_tag * 1.5);
+                        // Аппаратный штраф против зацикливания мыслей в ОЗУ
+                        if is_visited {
+                            score -= cfg.spike_threshold * 20.0;
+                        }
 
-                        // Простой lock-free обход массива вместо внешней ссылки
                         for &f_id in &forbidden_ids {
-                            if synapse.target_id == f_id {
-                                score -= cfg.spike_threshold * 50.0;
-                            }
+                            if synapse.target_id == f_id { score -= cfg.spike_threshold * 50.0; }
                         }
-                        
                         if let Some(bad_id) = bad_literal_id {
-                            if synapse.target_id == bad_id {
-                                score -= cfg.spike_threshold * 100.0; 
-                            }
+                            if synapse.target_id == bad_id { score -= cfg.spike_threshold * 100.0; }
                         }
-
                         (synapse.target_id, score)
                     })
                     .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-                if let Some((target_id, max_score)) = best_match {
+                if let Some((target_id, score)) = best_match {
+                    max_score = score;
+                    // Сеть выбирает путь, только если он пробивает порог мертвой зоны
                     if max_score > -500.0 {
                         strongest_target = Some(target_id);
                     }
                 }
+            } else {
+                println!("  📍 Шаг {}: Узел ID {} физически отсутствует в adj_list!", step, current_id);
             }
 
             if let Some(next_id) = strongest_target {
                 visited_path.push(next_id);
+                let mut should_break = false;
 
                 if let Some(neuron) = self.memory.neurons.get(next_id as usize) {
+                    let next_name = self.memory.reverse_lookup_token(next_id);
+                    println!("    💎 ВЫБРАН ЛУЧШИЙ ПУТЬ: '{}' (ID: {}) с баллом {:.2}", next_name, next_id, max_score);
+
                     match &neuron.origin {
                         crate::models::NeuronOrigin::BaseToken(name) => {
-                            if name != start_token {
-                                trail.push(name.clone());
-                            }
-                            if name == ";" {
-                                break;
-                            }
+                            if !trail.contains(name) { trail.push(name.clone()); }
+                            if name == ";" { should_break = true; }
+                            current_id = next_id;
                         }
                         crate::models::NeuronOrigin::ChunkSequence(_, _) => {
                             let full_phrase = self.memory.reverse_lookup_token(next_id);
+                            println!("      [РАСПРЯМЛЕНИЕ ЧАНКА]: Мета-понятие разворачивается во фразу: '{}'", full_phrase);
+                            
                             for word in full_phrase.split_whitespace() {
-                                if word != start_token && !trail.contains(&word.to_string()) && word != "\"bad_literal\"" {
+                                if !trail.contains(&word.to_string()) && word != "\"bad_literal\"" {
                                     trail.push(word.to_string());
                                 }
+                                if word == ";" { should_break = true; }
                             }
-                            if full_phrase.contains(';') {
-                                break;
-                            }
+                            current_id = self.memory.get_chunk_terminal_token_id(next_id);
+                            println!("      [ПЕРЕКЛЮЧЕНИЕ КОНТЕКСТА]: Мысль сместилась на терминальный ID: {}", current_id);
                         }
                     }
                 }
 
-                current_id = next_id;
+                if should_break { 
+                    println!("    [ФИНИШ]: Встречен терминальный символ ';'. Стрим завершен.");
+                    break; 
+                }
             } else {
-                println!("    [КОНЕЦ]: Связи исчерпаны или затухли.");
+                println!("    [ТУПИК]: Из текущего узла все дороги заблокированы или угасли (max_score: {:.2}).", max_score);
                 break;
             }
         }
+        
+        println!("🔮 [ТРАССИРОВКА ЭКСПЕРТИЗЫ]: Итоговый шлейф на выходе генератора: {:?}", trail);
         trail
     }
 
+
+    /// Сброс буферов внимания предложений для защиты от бесконечной рекурсии чанков
+    pub fn clear_runtime_attention_buffers(&mut self) {
+        self.previous_tick_spikes.clear();
+        self.event_queue.clear();
+    }
 }

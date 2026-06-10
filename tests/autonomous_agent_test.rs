@@ -3,37 +3,27 @@ use spikedb::agent::SpikeCompilerAgent;
 use spikedb::config::BrainConfig;
 use std::fs;
 use std::path::PathBuf;
-use std::time::Duration;
 
 #[test]
 fn test_autonomous_mutation_on_large_dataset() {
     println!("\n=== ЗАПУСК ПЕСОЧНИЦЫ АВТОНОМНОГО АГЕНТА SpikeDB НА БОЛЬШИХ ДАННЫХ ===");
 
-    let db_path = "./agent_production_brain_db";
+    let db_path = "dummy_ram_path";
     let target_file = "./virtual_broken_project.rs";
-
-    // Очищаем старые артефакты
-    let _ = fs::remove_dir_all(db_path);
     let _ = fs::remove_file(target_file);
 
-    // 1. Тонкая настройка рантайм-характера сети из TOML
     let mut config = BrainConfig::default();
-    config.coincidence_threshold = 8; // Жесткий порог чанкинга
+    config.coincidence_threshold = 8; 
     config.learning_rate = 0.4;       
-    config.leak_tau = 10.0;           // Мгновенное угасание фонового шума
-    
-    let toml_string = toml::to_string_pretty(&config).unwrap();
-    let _ = fs::write("brain_config.toml", toml_string);
+    config.leak_tau = 10.0;           
+    let _ = fs::write("brain_config.toml", toml::to_string_pretty(&config).unwrap());
 
     let db = SpikeDB::open(db_path);
-    std::thread::sleep(Duration::from_millis(100));
 
     // =================================================================
-    // ФАЗА 1: СКАНИРОВАНИЕ И МАСШТАБНАЯ НАКАЧКА РЕАЛЬНОГО ДАТАСЕТА (1500+ СТРОК)
+    // ФАЗА 1: НАКАЧКА ОБУЧАЮЩИХ УРОКОВ (CURRICULUM LEARNING)
     // =================================================================
     let sequences_dir = "tests/sequences";
-    println!("[ТЕСТ]: Сканирование директории с реальными уроками: '{}'...", sequences_dir);
-
     let mut file_paths: Vec<PathBuf> = Vec::new();
     if let Ok(entries) = fs::read_dir(sequences_dir) {
         for entry in entries.flatten() {
@@ -43,85 +33,89 @@ fn test_autonomous_mutation_on_large_dataset() {
             }
         }
     }
-    file_paths.sort(); // Упорядочиваем по сложности 01, 02, 03...
+    file_paths.sort();
 
-    println!("[ТЕСТ]: Запуск масштабного конвейера обучения...");
+    // Добавляем 10 правильных строковых паттернов прямо в ОЗУ перед файлами,
+    // чтобы зацементировать в мозге рельсы "to_string()" для строк!
+    println!("[ТЕСТ]: Инициализация базового строкового опыта...");
+    for i in 0..12 {
+        let string_line = vec![
+            "let".to_string(), 
+            format!("text_{}", i), 
+            ":".to_string(), 
+            "String".to_string(), 
+            "=".to_string(), 
+            "word".to_string(), 
+            ".".to_string(), 
+            "to_string".to_string(), 
+            "(".to_string(), 
+            ")".to_string(), 
+            ";".to_string()
+        ];
+        db.inject_string_context(string_line, 1.2, Some(true));
+    }
+
+    println!("[ТЕСТ]: Запуск пакетного конвейера обучения на файлах...");
     for (index, path) in file_paths.iter().enumerate() {
         let file_content = fs::read_to_string(path).unwrap();
+        
         for line in file_content.lines() {
             let trimmed = line.trim();
             if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
 
-            // Шлем токены в сеть
+            let mut line_tokens = Vec::new();
             let special_chars = ['=', ';', '{', '}', '(', ')', '+', '-', '>', '<', ':', ',', '\'', '&', '!'];
             let mut current_token = String::new();
+            
             for ch in trimmed.chars() {
                 if ch.is_whitespace() {
-                    if !current_token.is_empty() { db.inject_token(&current_token, 1.2); current_token.clear(); }
+                    if !current_token.is_empty() { line_tokens.push(current_token.clone()); current_token.clear(); }
                 } else if special_chars.contains(&ch) {
-                    if !current_token.is_empty() { db.inject_token(&current_token, 1.2); current_token.clear(); }
-                    db.inject_token(&ch.to_string(), 1.2);
+                    if !current_token.is_empty() { line_tokens.push(current_token.clone()); current_token.clear(); }
+                    line_tokens.push(ch.to_string());
                 } else {
                     current_token.push(ch);
                 }
             }
-            if !current_token.is_empty() { db.inject_token(&current_token, 1.2); }
-            std::thread::sleep(Duration::from_millis(4)); 
-        }
+            if !current_token.is_empty() { line_tokens.push(current_token); }
 
-        // Подкрепляем сложные синтаксические конструкции
-        if index >= 4 {
-            db.approve_success(true);
-            std::thread::sleep(Duration::from_millis(20));
+            db.inject_string_context(line_tokens, 1.2, Some(index >= 4));
         }
     }
 
-    println!("[ТЕСТ]: Ожидание стабилизации фокуса внимания и остаточных зарядов...");
-    std::thread::sleep(Duration::from_millis(1500));
-
-    // Сессия ночного сна для выжигания рантайм-мусора и контрастирования грамматики
+    // Дожидаемся фиксации знаний и усыпляем сеть
+    db.wait_flush_barrier();
+    println!("[ТЕСТ]: Погружение графа в сон...");
     db.trigger_sleep();
-    std::thread::sleep(Duration::from_millis(400));
+    db.wait_flush_barrier();
 
     // =================================================================
-    // ФАЗА 2: ИНИЦИАЛИЗАЦИЯ ДЕФЕКТА С ВЫСОКИМ ДИССОНАНСОМ
-    // Записываем дефектный код: "let alpha_0 = "bad_literal" ;"
-    // Из файла 01 сеть знает, что после знака "=" должно идти число, а не строка!
+    // ФАЗА 2: ИНИЦИАЛИЗАЦИЯ ДЕФЕКТА И МОКИРОВАНИЕ СРЕДЫ
     // =================================================================
-    println!("\n[ТЕСТ]: Фаза 2. Инициализация дефектного кода и мокирование ошибки E0308...");
     let broken_code = "let alpha_0 = \"bad_literal\" ;";
     fs::write(target_file, broken_code).unwrap();
 
-    // Создаем агента над нашей огромной базой знаний
     let mut agent = SpikeCompilerAgent::new(db, target_file);
     agent.is_test_mode = true;
-    agent.mock_error_code = "E0308".to_string(); // Подаем код ошибки несоответствия типов
+    agent.mock_error_code = "E0308".to_string(); // Мокаем ошибку несоответствия типов
 
     // =================================================================
-    // ФАЗА 3: ЭКЗАМЕН АВТОНОМНОЙ МУТАЦИИ И ВЫВОДА
+    // ФАЗА 3: ЗАПУСК АГЕНТА И ЭКСПЕРТИЗА МУТАЦИИ
     // =================================================================
-    println!("\n[ТЕСТ]: Фаза 3. Запуск агента. Включение латерального торможения...");
-    
-    std::thread::sleep(Duration::from_millis(20));
-
-    // Переключаем мок на успех
+    // Переключаем мок на успех компиляции в случае применения верной гипотезы
     agent.mock_error_code = "Success".to_string(); 
 
     let resulting_code = agent.perceive_and_adapt();
-    println!("\n[ТЕСТ]: Результат автономного мышления SpikeDB: '{}'", resulting_code);
+    println!("\n[ТЕСТ]: Итоговый результат автономного мышления SpikeDB: '{}'", resulting_code);
 
-    // ВЕРИФИКАЦИЯ ОСМЫСЛЕННОСТИ: Проверяем, что на основе опыта файла 01 сеть 
-    // сама отбросила неверный строковый литерал и вернула правильный целочисленный паттерн!
-    // (Поскольку в 01 файле у нас были числа, сеть должна была перетечь на числовые синапсы)
+    // Верифицируем, что латеральное торможение выжгло дефект, а рекурсивный поиск
+    // NeuronOrigin перенаправил синтаксис на строковые рельсы!
     assert!(!resulting_code.contains("\"bad_literal\""), 
-        "Критическая ошибка: Сеть не смогла совершить автономную мутацию и оставила дефектный токен!");
-    
-    println!("[ТЕСТ]: ПОТРЯСАЮЩЕ! SpikeDB успешно обошла дефект на основе естественного диссонанса больших данных.");
+        "Критическая ошибка: Сеть оставила дефектный токен в коде!");
+        
+    assert!(resulting_code.contains("to_string"), 
+        "Ошибка: Мысль сети не смогла мутировать в сторону строкового метода!");
 
-    // Очистка песочницы
-    drop(agent);
-    std::thread::sleep(Duration::from_millis(100));
-    let _ = fs::remove_dir_all(db_path);
     let _ = fs::remove_file(target_file);
     let _ = fs::remove_file("brain_config.toml");
 }
