@@ -85,10 +85,6 @@ fn run_performance_stress_test() {
         db.inject_token(&token, 1.2);
     }
 
-    // КАНАЛЬНЫЙ БАРЬЕР: Ждем, пока Ядро полностью провертит все внутренние тики 
-    // чанкинга и эволюции понятий. Никакого внешнего sleep!
-    db.wait_until_flushed();
-
     // Дофаминовое подкрепление
     db.approve_success(true);
 

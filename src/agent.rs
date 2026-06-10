@@ -29,7 +29,6 @@ impl SpikeCompilerAgent {
             }
         }
 
-        // Реальный вызов Cargo для продакшена
         let output = Command::new("cargo")
             .arg("check")
             .output()
@@ -58,12 +57,12 @@ impl SpikeCompilerAgent {
             .to_string()
     }
 
-    /// ПУБЛИЧНЫЙ МЕТОД: Перезапись целевой строки в файле новой гипотезой
+    /// Перезапись целевой строки в файле новой гипотезой
     pub fn apply_hypothesis(&self, hypothesis: &str) {
         fs::write(&self.target_file, hypothesis).expect("Ошибка записи в файл");
     }
 
-        /// ГЛАВНЫЙ ЦИКЛ АВТОНОМНОГО МЫШЛЕНИЯ И АДАПТАЦИИ
+    /// ГЛАВНЫЙ ЦИКЛ АВТОНОМНОГО МЫШЛЕНИЯ И АДАПТАЦИИ
     pub fn perceive_and_adapt(&mut self) -> String {
         // Проверяем среду компилятором
         match self.run_cargo_check() {
@@ -78,50 +77,56 @@ impl SpikeCompilerAgent {
                 let mut context_tokens = vec![error_code.clone()];
                 let special_chars = ['=', ';', '{', '}', '(', ')', '.', ':', ',', '\'', '&', '!'];
                 let mut current_token = String::new();
+                
                 for ch in broken_line.chars() {
                     if ch.is_whitespace() {
-                        if !current_token.is_empty() { context_tokens.push(current_token.clone()); current_token.clear(); }
+                        if !current_token.is_empty() { 
+                            context_tokens.push(current_token.clone()); 
+                            current_token.clear(); 
+                        }
                     } else if special_chars.contains(&ch) {
-                        if !current_token.is_empty() { context_tokens.push(current_token.clone()); current_token.clear(); }
+                        if !current_token.is_empty() { 
+                            context_tokens.push(current_token.clone()); 
+                            current_token.clear(); 
+                        }
                         context_tokens.push(ch.to_string());
                     } else {
                         current_token.push(ch);
                     }
                 }
-                if !current_token.is_empty() { context_tokens.push(current_token); }
+                
+                // ИСПРАВЛЕНИЕ: Переменная теперь гарантированно находится внутри области видимости
+                if !current_token.is_empty() { 
+                    context_tokens.push(current_token); 
+                }
 
                 // =============================================================
-                // НАКАЧКА И АВТОНОМНЫЙ РЕЗОНАНС
+                // ДИГНОСТИЧЕСКАЯ ПОШТУЧНАЯ НАКАЧКА КОНТЕКСТА
+                // ИСПРАВЛЕНИЕ: Возвращаем чистый поштучный inject_token в цикле
                 // =============================================================
+                println!("[AGENT]: Накачка сети контекстом дефекта...");
                 for token in &context_tokens {
                     self.db.inject_token(token, 1.2);
                 }
-                std::thread::sleep(std::time::Duration::from_millis(40));
 
                 // Просим сеть саму сгенерировать мутацию на основе коллизии токов
                 let generated_tokens = self.db.generate_code_hypothesis("let", context_tokens.clone());
-                
-                // =============================================================
-                // УМНАЯ ТОКЕНИЗАЦИЯ И РАСПРЯМЛЕНИЕ ЧАНКОВ (ИСПРАВЛЕНИЕ)
-                // Поскольку рекурсивный поиск NeuronOrigin выдает фразы с пробелами,
-                // мы разрываем их на атомарные лексемы и собираем строго через 1 пробел.
-                // =============================================================
+
                 let raw_hypothesis = generated_tokens.join(" ");
                 let flat_tokens: Vec<&str> = raw_hypothesis.split_whitespace().collect();
                 let hypothesis_code = flat_tokens.join(" ");
 
-                // ПРИМЕНЕНИЕ ГИПОТЕЗЫ К ВИРТУАЛЬНОМУ ФАЙЛУ
+                // ПРИМЕНЕНИЕ ГИПОТЕЗЫ
                 self.apply_hypothesis(&hypothesis_code);
-                std::thread::sleep(std::time::Duration::from_millis(20));
 
                 // Проверяем, исправило ли это ситуацию
                 match self.run_cargo_check() {
                     Ok(_) => {
-                        self.db.approve_success(true); // УСПЕХ: Связи верной мутации закреплены
+                        self.db.approve_success(true); // Успех, закрепляем синапсы!
                         hypothesis_code
                     }
                     Err(_) => {
-                        self.db.approve_success(false); // ШТРАФ: Откат к исходному дефекту
+                        self.db.approve_success(false); // Штраф, откат
                         self.apply_hypothesis(&broken_line);
                         broken_line
                     }

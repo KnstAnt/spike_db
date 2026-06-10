@@ -10,8 +10,6 @@ enum DbCommand {
     SleepAndPrune,
     InspectRequest { token: String, tx_response: crossbeam_channel::Sender<Option<(u64, f32)>> },
     GenerateTrail { start_token: String, context_tokens: Vec<String>, tx_response: crossbeam_channel::Sender<Vec<String>> },
-    // НОВАЯ КОМАНДА: Синхронизационный барьер
-    WaitFlushed { tx_response: crossbeam_channel::Sender<()> },
     Shutdown,
 }
 
@@ -24,14 +22,18 @@ impl SpikeDB {
     pub fn open(_dummy_path: &str) -> Self {
         let (tx, rx) = unbounded::<DbCommand>();
         let config = BrainConfig::load_from_file();
+        let (tx_ready, rx_ready) = crossbeam_channel::bounded::<()>(1);
 
         let thread_handle = thread::spawn(move || {
             let mut network = SpikingNetwork::new(config);
             println!("[SpikeDB]: Фоновый асинхронный поток In-Memory вычислений успешно запущен.");
+            let _ = tx_ready.send(());
 
-            loop {
+                        loop {
                 let mut should_shutdown = false;
 
+                // Если в сети есть активные спайки, тайм-аут микроскопический,
+                // если сеть спит — засыпаем глубоко
                 let tick_timeout = if network.active_spikes_count() > 0 {
                     Duration::from_millis(1)
                 } else {
@@ -60,20 +62,22 @@ impl SpikeDB {
                                 let trail = network.generate_autonomous_mutation(&start_token, &context_tokens);
                                 let _ = tx_response.send(trail);
                             }
-                            Ok(DbCommand::WaitFlushed { tx_response }) => {
-                                // АРХИТЕКТУРНЫЙ БАРЬЕР: Если прилетел этот запрос, 
-                                // мы ПРЕРЫВАЕМ чтение канала и крутим тики мышления до тех пор,
-                                // пока очередь спайков полностью не иссякнет!
-                                while network.active_spikes_count() > 0 {
-                                    network.tick();
-                                }
-                                // Только теперь шлем ответ — барьер пройден честно
-                                let _ = tx_response.send(());
-                            }
                             Ok(DbCommand::Shutdown) | Err(_) => {
                                 println!("[SpikeDB]: Остановка фонового потока...");
                                 should_shutdown = true;
                             }
+                        }
+                        
+                        // =============================================================
+                        // ИСПРАВЛЕНИЕ: ПРИНУДИТЕЛЬНОЕ ПРОДВИЖЕНИЕ ВРЕМЕНИ ЯДРА
+                        // Сразу после обработки ЛЮБОЙ входящей команды из канала, 
+                        // если в очереди event_queue накопились спайки, мы заставляем
+                        // Ядро сделать один шаг симуляции тика! Это мгновенно двинет 
+                        // время current_tick вперед, проложит синапсы чанкинга и взведет tags
+                        // ДО того, как прилетит следующая команда Критики или Сна!
+                        // =============================================================
+                        if network.active_spikes_count() > 0 {
+                            network.tick();
                         }
                     }
                     default(tick_timeout) => {
@@ -88,6 +92,8 @@ impl SpikeDB {
                 }
             }
         });
+
+        let _ = rx_ready.recv();
 
         Self {
             tx,
@@ -124,15 +130,6 @@ impl SpikeDB {
             tx_response,
         });
         rx_response.recv().unwrap_or_default()
-    }
-
-    /// ПУБЛИЧНЫЙ МЕТОД СИНХРОНИЗАЦИИ: Гарантирует, что Ядро "дожует" все мысли 
-    /// перед тем, как тест двинется дальше. Без костыльных задержек sleep.
-    pub fn wait_until_flushed(&self) {
-        let (tx_response, rx_response) = crossbeam_channel::bounded::<()>(1);
-        if self.tx.send(DbCommand::WaitFlushed { tx_response }).is_ok() {
-            let _ = rx_response.recv();
-        }
     }
 }
 
