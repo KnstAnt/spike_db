@@ -4,13 +4,14 @@ use crossbeam_channel::{unbounded, Sender, select};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-/// Команды внутреннего протокола асинхронного менеджера базы данных
 enum DbCommand {
     InjectText { token: String, charge: f32 },
     ApplyReinforcement { is_success: bool },
     SleepAndPrune,
     InspectRequest { token: String, tx_response: crossbeam_channel::Sender<Option<(u64, f32)>> },
     GenerateTrail { start_token: String, context_tokens: Vec<String>, tx_response: crossbeam_channel::Sender<Vec<String>> },
+    // НОВАЯ КОМАНДА: Синхронизационный барьер
+    WaitFlushed { tx_response: crossbeam_channel::Sender<()> },
     Shutdown,
 }
 
@@ -20,19 +21,17 @@ pub struct SpikeDB {
 }
 
 impl SpikeDB {
-    /// Открывает базу данных Sled и запускает изолированного Актора
-    pub fn open(path: &str) -> Self {
+    pub fn open(_dummy_path: &str) -> Self {
         let (tx, rx) = unbounded::<DbCommand>();
-        let path_str = path.to_string();
         let config = BrainConfig::load_from_file();
 
         let thread_handle = thread::spawn(move || {
-            // ИСПРАВЛЕНИЕ: База данных открывается ОДИН РАЗ за всю жизнь программы!
-            let mut network = SpikingNetwork::new(&path_str, config);
-            println!("[SpikeDB]: Фоновый асинхронный поток базы данных успешно запущен.");
+            let mut network = SpikingNetwork::new(config);
+            println!("[SpikeDB]: Фоновый асинхронный поток In-Memory вычислений успешно запущен.");
 
             loop {
-                // Настройка таймера тика в зависимости от активности сети
+                let mut should_shutdown = false;
+
                 let tick_timeout = if network.active_spikes_count() > 0 {
                     Duration::from_millis(1)
                 } else {
@@ -43,7 +42,7 @@ impl SpikeDB {
                     recv(rx) -> msg => {
                         match msg {
                             Ok(DbCommand::InjectText { token, charge }) => {
-                                let id = network.get_or_create_token_neuron(&token);
+                                let id = network.memory.get_or_create_token(&token);
                                 network.inject_stimulus(id, charge);
                             }
                             Ok(DbCommand::ApplyReinforcement { is_success }) => {
@@ -53,17 +52,27 @@ impl SpikeDB {
                                 network.sleep_and_prune();
                             }
                             Ok(DbCommand::InspectRequest { token, tx_response }) => {
-                                let id = network.get_or_create_token_neuron(&token);
-                                let res = network.get_strongest_prediction(id);
+                                let res = network.memory.lookup_token_id(&token)
+                                    .and_then(|id| network.get_strongest_prediction(id));
                                 let _ = tx_response.send(res);
                             }
                             Ok(DbCommand::GenerateTrail { start_token, context_tokens, tx_response }) => {
                                 let trail = network.generate_autonomous_mutation(&start_token, &context_tokens);
                                 let _ = tx_response.send(trail);
                             }
+                            Ok(DbCommand::WaitFlushed { tx_response }) => {
+                                // АРХИТЕКТУРНЫЙ БАРЬЕР: Если прилетел этот запрос, 
+                                // мы ПРЕРЫВАЕМ чтение канала и крутим тики мышления до тех пор,
+                                // пока очередь спайков полностью не иссякнет!
+                                while network.active_spikes_count() > 0 {
+                                    network.tick();
+                                }
+                                // Только теперь шлем ответ — барьер пройден честно
+                                let _ = tx_response.send(());
+                            }
                             Ok(DbCommand::Shutdown) | Err(_) => {
-                                println!("[SpikeDB]: Фиксация транзакций Sled и остановка потока...");
-                                break;
+                                println!("[SpikeDB]: Остановка фонового потока...");
+                                should_shutdown = true;
                             }
                         }
                     }
@@ -72,6 +81,10 @@ impl SpikeDB {
                             network.tick();
                         }
                     }
+                }
+
+                if should_shutdown {
+                    break;
                 }
             }
         });
@@ -94,10 +107,8 @@ impl SpikeDB {
         let _ = self.tx.send(DbCommand::SleepAndPrune);
     }
 
-    /// Безопасный асинхронный запрос инспекции через каналы
     pub fn inspect_prediction(&self, token: &str) -> Option<(u64, f32)> {
         let (tx_response, rx_response) = crossbeam_channel::bounded::<Option<(u64, f32)>>(1);
-        
         if self.tx.send(DbCommand::InspectRequest { token: token.to_string(), tx_response }).is_ok() {
             rx_response.recv().unwrap_or(None)
         } else {
@@ -113,7 +124,16 @@ impl SpikeDB {
             tx_response,
         });
         rx_response.recv().unwrap_or_default()
-    }    
+    }
+
+    /// ПУБЛИЧНЫЙ МЕТОД СИНХРОНИЗАЦИИ: Гарантирует, что Ядро "дожует" все мысли 
+    /// перед тем, как тест двинется дальше. Без костыльных задержек sleep.
+    pub fn wait_until_flushed(&self) {
+        let (tx_response, rx_response) = crossbeam_channel::bounded::<()>(1);
+        if self.tx.send(DbCommand::WaitFlushed { tx_response }).is_ok() {
+            let _ = rx_response.recv();
+        }
+    }
 }
 
 impl Drop for SpikeDB {

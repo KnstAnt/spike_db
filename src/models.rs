@@ -1,15 +1,11 @@
-use serde::{Serialize, Deserialize};
-use bincode_next::{Encode, Decode};
-use crate::config::CONFIG; // Импортируем наш глобальный конфиг
-
-#[derive(Serialize, Deserialize, Encode, Decode, Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NeuronType {
     Sensor,
     Motor,
     Hidden,
 }
 
-#[derive(Serialize, Deserialize, Encode, Decode, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct NeuronState {
     pub potential: f32,
     pub last_updated_tick: u64,
@@ -17,33 +13,11 @@ pub struct NeuronState {
     pub neuron_type: NeuronType,
 }
 
-impl Synapse {
-    pub fn trigger(&mut self, current_tick: u64) {
-        self.decay_tag_lazy(current_tick);
-        self.tag_trace = (self.tag_trace + 0.5).min(1.0);
-    }
-
-    pub fn decay_tag_lazy(&mut self, current_tick: u64) {
-        let cfg = CONFIG.get().expect("Конфигурация SpikeDB не инициализирована");
-        
-        if current_tick > self.last_used_tick {
-            let delta_t = (current_tick - self.last_used_tick) as f32;
-            self.tag_trace *= (-delta_t / cfg.tag_tau).exp();
-            self.last_used_tick = current_tick;
-        }
-    }
-
-    /// ИСПРАВЛЕНИЕ: Метод расчета резонанса находится строго внутри impl Synapse!
-    pub fn calculate_resonance_score(&self) -> f32 {
-        // Сила резонанса синапса = базовый вес + его краткосрочный химический след
-        self.weight + self.tag_trace
-    }
-}
-
-#[derive(Serialize, Deserialize, Encode, Decode, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Synapse {
-    pub weight: f32,
-    pub tag_trace: f32,
+    pub target_id: u64,    // ID целевого нейрона, куда летит импульс
+    pub weight: f32,       // Сила связи
+    pub tag_trace: f32,    // Химический след активности (Tag)
     pub last_used_tick: u64,
 }
 
@@ -57,17 +31,14 @@ impl NeuronState {
         }
     }
 
-    /// Принимает импульс, используя глобальный CONFIG
-    pub fn receive_impulse(&mut self, incoming_charge: f32, current_tick: u64) -> bool {
+    pub fn receive_impulse(&mut self, incoming_charge: f32, current_tick: u64, leak_tau: f32, spike_threshold: f32, cooldown_ticks: u64) -> bool {
         if current_tick < self.cooldown_until {
             return false;
         }
 
-        let cfg = CONFIG.get().expect("Конфигурация SpikeDB не инициализирована");
-
         if current_tick > self.last_updated_tick {
             let delta_t = (current_tick - self.last_updated_tick) as f32;
-            self.potential *= (-delta_t / cfg.leak_tau).exp();
+            self.potential *= (-delta_t / leak_tau).exp();
             self.last_updated_tick = current_tick;
         }
 
@@ -77,9 +48,9 @@ impl NeuronState {
             self.potential = 0.0;
         }
 
-        if self.potential >= cfg.spike_threshold {
+        if self.potential >= spike_threshold {
             self.potential = 0.0;
-            self.cooldown_until = current_tick + cfg.cooldown_ticks;
+            self.cooldown_until = current_tick + cooldown_ticks;
             true
         } else {
             false
@@ -87,3 +58,21 @@ impl NeuronState {
     }
 }
 
+impl Synapse {
+    pub fn trigger(&mut self, current_tick: u64, tag_tau: f32) {
+        self.decay_tag_lazy(current_tick, tag_tau);
+        self.tag_trace = (self.tag_trace + 0.5).min(1.0);
+    }
+
+    pub fn decay_tag_lazy(&mut self, current_tick: u64, tag_tau: f32) {
+        if current_tick > self.last_used_tick {
+            let delta_t = (current_tick - self.last_used_tick) as f32;
+            self.tag_trace *= (-delta_t / tag_tau).exp();
+            self.last_used_tick = current_tick;
+        }
+    }
+
+    pub fn calculate_resonance_score(&self) -> f32 {
+        self.weight + self.tag_trace
+    }
+}

@@ -4,3 +4,4 @@ pub mod network;
 pub mod database_manager;
 pub mod tokenizer;
 pub mod agent;
+pub mod memory;

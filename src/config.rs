@@ -3,7 +3,6 @@ use std::fs;
 use std::path::Path;
 use std::sync::OnceLock;
 
-// ГЛОБАЛЬНЫЙ КОНФИГ: Доступен для чтения во всем проекте (pub)
 pub static CONFIG: OnceLock<BrainConfig> = OnceLock::new();
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -15,6 +14,12 @@ pub struct BrainConfig {
     pub coincidence_threshold: u32,
     pub learning_rate: f32,
     pub punish_rate: f32,
+
+    // НОВЫЕ ПАРАМЕТРЫ ДЛЯ КОНТРАСТНОГО СНА
+    pub sleep_death_threshold: f32,   // Порог смерти синапса (было 0.2)
+    pub sleep_strong_decay: f32,     // Угасание сильных связей (было 0.98)
+    pub sleep_medium_decay: f32,     // Угасание средних связей (было 0.85)
+    pub sleep_weak_shredder: f32,    // Жесткий штраф вычитания для шума (было 0.25)
 }
 
 impl Default for BrainConfig {
@@ -27,6 +32,12 @@ impl Default for BrainConfig {
             coincidence_threshold: 3,
             learning_rate: 0.3,
             punish_rate: 0.2,
+            
+            // Дефолтные настройки ночного гомеостаза
+            sleep_death_threshold: 0.2,
+            sleep_strong_decay: 0.98,
+            sleep_medium_decay: 0.85,
+            sleep_weak_shredder: 0.25,
         }
     }
 }
