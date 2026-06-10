@@ -20,7 +20,7 @@ pub struct NeuronState {
     pub cooldown_until: u64,
     pub neuron_type: NeuronType,
     // НОВОЕ ПОЛЕ: Каноничная ссылка происхождения нейрона
-    pub origin: NeuronOrigin, 
+    pub origin: NeuronOrigin,
 }
 
 #[derive(Debug, Clone)]
@@ -42,14 +42,24 @@ impl NeuronState {
         }
     }
 
-    pub fn receive_impulse(&mut self, incoming_charge: f32, current_tick: u64, leak_tau: f32, spike_threshold: f32, cooldown_ticks: u64) -> bool {
+    pub fn receive_impulse(
+        &mut self,
+        incoming_charge: f32,
+        current_tick: u64,
+        leak_tau: f32,
+        spike_threshold: f32,
+        cooldown_ticks: u64,
+    ) -> bool {
+        // Жесткая проверка кулдауна на текущий системный тик
         if current_tick < self.cooldown_until {
             return false;
         }
 
         if current_tick > self.last_updated_tick {
             let delta_t = (current_tick - self.last_updated_tick) as f32;
-            self.potential *= (-delta_t / leak_tau).exp();
+            // ИСПРАВЛЕНИЕ: Гарантируем строгий математический знак минус перед делением дельты!
+            let leak_factor = (-delta_t / leak_tau).exp();
+            self.potential *= leak_factor;
             self.last_updated_tick = current_tick;
         }
 
@@ -78,7 +88,8 @@ impl Synapse {
     pub fn decay_tag_lazy(&mut self, current_tick: u64, tag_tau: f32) {
         if current_tick > self.last_used_tick {
             let delta_t = (current_tick - self.last_used_tick) as f32;
-            self.tag_trace *= (-delta_t / tag_tau).exp();
+            let decay_factor = (-delta_t / tag_tau).exp();
+            self.tag_trace *= decay_factor;
             self.last_used_tick = current_tick;
         }
     }
