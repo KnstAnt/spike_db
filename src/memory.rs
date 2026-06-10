@@ -1,5 +1,5 @@
+use crate::models::{NeuronOrigin, NeuronState, NeuronType, Synapse};
 use std::collections::HashMap;
-use crate::models::{NeuronState, Synapse, NeuronType, NeuronOrigin};
 
 pub struct SpikeMemory {
     // ЕДИНЫЙ РАВНОЗНАЧНЫЙ СПИСОК НЕЙРОНОВ В ОЗУ
@@ -22,10 +22,13 @@ impl SpikeMemory {
         if let Some(&id) = self.vocabulary.get(token) {
             return id;
         }
-        
+
         let id = self.neurons.len() as u64;
         // Записываем происхождение токена
-        self.neurons.push(NeuronState::new(NeuronType::Sensor, NeuronOrigin::BaseToken(token.to_string())));
+        self.neurons.push(NeuronState::new(
+            NeuronType::Sensor,
+            NeuronOrigin::BaseToken(token.to_string()),
+        ));
         self.adj_list.push(Vec::new());
 
         self.vocabulary.insert(token.to_string(), id);
@@ -35,34 +38,48 @@ impl SpikeMemory {
     /// Выращивает мета-нейрон чанкинга на основе СВЯЗИ между двумя нейронами
     pub fn create_meta_chunk(&mut self, source_id: u64, target_id: u64) -> u64 {
         let id = self.neurons.len() as u64;
-        
+
         // Записываем ссылки на базовые нейроны происхождения
-        self.neurons.push(NeuronState::new(NeuronType::Hidden, NeuronOrigin::ChunkSequence(source_id, target_id)));
+        self.neurons.push(NeuronState::new(
+            NeuronType::Hidden,
+            NeuronOrigin::ChunkSequence(source_id, target_id),
+        ));
         self.adj_list.push(Vec::new());
         id
     }
 
-   /// Прокладывает синапс в RAM и принудительно взводит его краткосрочный след активности
-      /// Прокладывает или активирует существующий синапс в ОЗУ, 
-    /// взводя его краткосрочный след пластичности на текущий тик времени.
+    /// Прокладывает или лениво релаксирует и активирует существующий синапс в ОЗУ,
+    /// строго соблюдая биологический ход времени и угасание следов пластичности.
     pub fn set_synapse(&mut self, source_id: u64, target_id: u64, weight: f32, current_tick: u64) {
         let source_idx = source_id as usize;
-        
-        if let Some(synapse) = self.adj_list[source_idx].iter_mut().find(|s| s.target_id == target_id) {
+        let cfg = crate::config::CONFIG
+            .get()
+            .expect("Конфиг не инициализирован");
+
+        if let Some(synapse) = self.adj_list[source_idx]
+            .iter_mut()
+            .find(|s| s.target_id == target_id)
+        {
             synapse.weight = weight;
-            
-            // ИСПРАВЛЕНИЕ: При повторном проходе или подкреплении строки 
-            // мы обязаны взвести tag_trace существующей связи и обновить время её использования!
-            // Это позволит Критику мгновенно увидеть и зацементировать этот путь.
+
+            // =================================================================
+            // ВОЗВРАТ ИСХОДНОГО КОНТРАКТА: ПАССИВНАЯ СИНАПТИЧЕСКАЯ РЕЛАКСАЦИЯ
+            // ИСПРАВЛЕНИЕ: Перед тем как взвести tag_trace, мы ОБЯЗАНЫ дать
+            // синапсу честно остыть во времени по экспоненте затухания,
+            // согласно дельте тиков, прошедших с его последнего использования!
+            // =================================================================
+            synapse.decay_tag_lazy(current_tick, cfg.tag_tau);
+
+            // Накапливаем след активности на основе УЖЕ отрелаксировавшего значения
             synapse.tag_trace = (synapse.tag_trace + 0.5).min(1.0);
             synapse.last_used_tick = current_tick;
         } else {
-            // Создание новой связи (остается без изменений)
             self.adj_list[source_idx].push(Synapse {
                 target_id,
                 weight,
-                tag_trace: 1.0, 
+                tag_trace: 1.0,
                 last_used_tick: current_tick,
+                cooldown_until: 0,
             });
         }
     }
@@ -87,7 +104,7 @@ impl SpikeMemory {
             match &neuron.origin {
                 // Если нейрон создан на основе базового токена — возвращаем его имя
                 NeuronOrigin::BaseToken(name) => name.clone(),
-                
+
                 // Если нейрон мета-понятие — рекурсивно раскручиваем имена базовых нейронов!
                 NeuronOrigin::ChunkSequence(id_a, id_b) => {
                     let part_a = self.reverse_lookup_token(*id_a);
@@ -100,7 +117,7 @@ impl SpikeMemory {
             format!("unknown_id_{}", target_id)
         }
     }
-    /// Рекурсивно раскручивает граф происхождения чанка и возвращает ID 
+    /// Рекурсивно раскручивает граф происхождения чанка и возвращает ID
     /// самого последнего (терминального) сенсорного токена, которым заканчивается фраза.
     pub fn get_chunk_terminal_token_id(&self, target_id: u64) -> u64 {
         if let Some(neuron) = self.neurons.get(target_id as usize) {
@@ -113,5 +130,24 @@ impl SpikeMemory {
         } else {
             target_id
         }
-    }    
+    }
+    /// Рекурсивно проверяет, содержит ли чанк или базовый токен
+    /// хотя бы один запрещенный идентификатор из списка вето.
+    pub fn is_chunk_containing_forbidden_ids(&self, target_id: u64, forbidden_ids: &[u64]) -> bool {
+        if forbidden_ids.contains(&target_id) {
+            return true;
+        }
+        if let Some(neuron) = self.neurons.get(target_id as usize) {
+            match &neuron.origin {
+                NeuronOrigin::BaseToken(_) => false,
+                // Если это чанк — рекурсивно проверяем оба его плеча!
+                NeuronOrigin::ChunkSequence(id_a, id_b) => {
+                    self.is_chunk_containing_forbidden_ids(*id_a, forbidden_ids)
+                        || self.is_chunk_containing_forbidden_ids(*id_b, forbidden_ids)
+                }
+            }
+        } else {
+            false
+        }
+    }
 }

@@ -1,15 +1,30 @@
-use crate::network::SpikingNetwork;
 use crate::config::BrainConfig;
-use crossbeam_channel::{unbounded, Sender, select};
+use crate::network::SpikingNetwork;
+use crossbeam_channel::{select, unbounded, Sender};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 enum SpikeCommand {
-    InjectLine { tokens: Vec<String>, charge: f32, reinforce: Option<bool> },
+    InjectLine {
+        tokens: Vec<String>,
+        charge: f32,
+        reinforce: Option<bool>,
+    },
     // ИСПРАВЛЕНИЕ: Добавляем канал обратного ответа для фиксации окончания сна!
-    SleepAndPrune { tx_response: crossbeam_channel::Sender<()> },
-    GenerateTrail { start_token: String, context_tokens: Vec<String>, tx_response: crossbeam_channel::Sender<Vec<String>> },
-    SyncBarrier { tx_response: crossbeam_channel::Sender<()> },    
+    SleepAndPrune {
+        tx_response: crossbeam_channel::Sender<()>,
+    },
+    GenerateTrail {
+        start_token: String,
+        context_tokens: Vec<String>,
+        tx_response: crossbeam_channel::Sender<Vec<String>>,
+    },
+    SyncBarrier {
+        tx_response: crossbeam_channel::Sender<()>,
+    },
+    GetTick {
+        tx_response: crossbeam_channel::Sender<u64>,
+    },
     Shutdown,
 }
 
@@ -41,18 +56,27 @@ impl SpikeDB {
                 select! {
                     recv(rx) -> msg => {
                         match msg {
-                            Ok(SpikeCommand::InjectLine { tokens, charge, reinforce }) => {
+                             Ok(SpikeCommand::InjectLine { tokens, charge, reinforce }) => {
                                 network.clear_runtime_attention_buffers();
+
+                                // ВСПЫШКА ДОФАМИНА: Открываем окно пластичности для ВСЕЙ строки!
+                                network.set_learning_mode(true);
 
                                 for token in tokens {
                                     let id = network.memory.get_or_create_token(&token);
                                     network.inject_stimulus(id, charge);
                                     network.tick();
                                 }
-                                
+
+                                // ИСПРАВЛЕНИЕ: Мы НЕ выключаем пластичность здесь!
+                                // Даем Ядру честно дожевать остаточные спайки-отклики предложения,
+                                // чтобы Чанкинг зафиксировал устойчивые магистрали в ОЗУ!
                                 while network.active_spikes_count() > 0 {
                                     network.tick();
                                 }
+
+                                // ЗАТВОР ЗАКРЫВАЕТСЯ: Пакет строки полностью выполнен, окно закрывается.
+                                network.set_learning_mode(false);
 
                                 if let Some(is_success) = reinforce {
                                     network.apply_reinforcement(is_success);
@@ -73,6 +97,9 @@ impl SpikeDB {
                             Ok(SpikeCommand::SyncBarrier { tx_response }) => {
                                 while network.active_spikes_count() > 0 { network.tick(); }
                                 let _ = tx_response.send(());
+                            }
+                            Ok(SpikeCommand::GetTick { tx_response }) => {
+                                let _ = tx_response.send(network.current_tick);
                             }
                             Ok(SpikeCommand::Shutdown) | Err(_) => {
                                 println!("[SpikeDB]: Остановка фонового потока...");
@@ -102,19 +129,31 @@ impl SpikeDB {
     }
 
     pub fn inject_string_context(&self, tokens: Vec<String>, charge: f32, reinforce: Option<bool>) {
-        let _ = self.tx.send(SpikeCommand::InjectLine { tokens, charge, reinforce });
+        let _ = self.tx.send(SpikeCommand::InjectLine {
+            tokens,
+            charge,
+            reinforce,
+        });
     }
 
-    /// ИСПРАВЛЕНИЕ: Теперь метод trigger_sleep жестко блокирует вызывающий поток 
+    /// ИСПРАВЛЕНИЕ: Теперь метод trigger_sleep жестко блокирует вызывающий поток
     /// до тех пор, пока Ядро полностью не завершит ночной прунинг! Без костыльных sleep.
     pub fn trigger_sleep(&self) {
         let (tx_response, rx_response) = crossbeam_channel::bounded::<()>(1);
-        if self.tx.send(SpikeCommand::SleepAndPrune { tx_response }).is_ok() {
+        if self
+            .tx
+            .send(SpikeCommand::SleepAndPrune { tx_response })
+            .is_ok()
+        {
             let _ = rx_response.recv();
         }
     }
 
-    pub fn generate_code_hypothesis(&self, start_token: &str, context_tokens: Vec<String>) -> Vec<String> {
+    pub fn generate_code_hypothesis(
+        &self,
+        start_token: &str,
+        context_tokens: Vec<String>,
+    ) -> Vec<String> {
         let (tx_response, rx_response) = crossbeam_channel::bounded::<Vec<String>>(1);
         let _ = self.tx.send(SpikeCommand::GenerateTrail {
             start_token: start_token.to_string(),
@@ -124,14 +163,26 @@ impl SpikeDB {
         rx_response.recv().unwrap_or_default()
     }
 
-    /// ПУБЛИЧНЫЙ МЕТОД СИНХРОНИЗАЦИИ: Гарантирует, что Ядро "дожует" все мысли 
+    /// ПУБЛИЧНЫЙ МЕТОД СИНХРОНИЗАЦИИ: Гарантирует, что Ядро "дожует" все мысли
     /// перед тем, как тест двинется дальше. Без костыльных задержек sleep.
     pub fn wait_flush_barrier(&self) {
         let (tx_response, rx_response) = crossbeam_channel::bounded::<()>(1);
-        if self.tx.send(SpikeCommand::SyncBarrier { tx_response }).is_ok() {
+        if self
+            .tx
+            .send(SpikeCommand::SyncBarrier { tx_response })
+            .is_ok()
+        {
             let _ = rx_response.recv();
         }
-    }    
+    }
+    pub fn get_current_kernel_tick(&self) -> u64 {
+        let (tx_response, rx_response) = crossbeam_channel::bounded::<u64>(1);
+        if self.tx.send(SpikeCommand::GetTick { tx_response }).is_ok() {
+            rx_response.recv().unwrap_or(0)
+        } else {
+            0
+        }
+    }
 }
 
 impl Drop for SpikeDB {

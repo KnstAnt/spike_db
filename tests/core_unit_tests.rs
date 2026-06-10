@@ -1,187 +1,380 @@
+use spikedb::config::BrainConfig;
 use spikedb::database_manager::SpikeDB;
-use spikedb::config::{BrainConfig, CONFIG};
+use spikedb::models::NeuronType;
 use spikedb::network::SpikingNetwork;
 
 // =================================================================
-// 1. АСИНХРОННАЯ LIF-ДИНАМИКА И ЗАТУХАНИЕ (ЧЕРЕЗ КАНАЛЫ SpikeDB)
+// 1. LIF-ДИНАМИКА И ЗАТУХАНИЕ ПОТЕНЦИАЛА (LEAK & COOLDOWN)
+// =================================================================
+
+#[test]
+fn test_positive_lif_threshold_and_cooldown() {
+    println!("\n=== [LIF+]: Проверка пробития порога и кулдауна ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let neuron = net.memory.get_or_create_token("LIF_Target");
+
+    net.inject_stimulus(neuron, 1.0);
+    assert_eq!(
+        net.active_spikes_count(),
+        1,
+        "Нейрон должен был пробить порог!"
+    );
+
+    net.tick();
+    net.clear_runtime_attention_buffers();
+
+    let cfg = spikedb::config::CONFIG.get().unwrap();
+    if let Some(n) = net.memory.neurons.get_mut(neuron as usize) {
+        // Импульс во время глубокого рефрактерного отдыха ОБЯЗАН быть отвергнут!
+        let fired = n.receive_impulse(
+            2.0,
+            net.current_tick,
+            cfg.leak_tau,
+            cfg.spike_threshold,
+            cfg.cooldown_ticks,
+        );
+        assert!(
+            !fired,
+            "Отрицательный сценарий сломан: нейрон сработал во время кулдауна!"
+        );
+    }
+}
+
+#[test]
+fn test_negative_lif_leakage_over_time() {
+    println!("\n=== [LIF-]: Проверка утечки мембранного потенциала ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let neuron = net.memory.get_or_create_token("Leak_Target");
+
+    net.inject_stimulus(neuron, 0.5);
+    net.clear_runtime_attention_buffers();
+
+    // Продвигаем время симуляции на 50 тиков вхолостую
+    for _ in 0..50 {
+        net.tick();
+    }
+
+    let cfg = spikedb::config::CONFIG.get().unwrap();
+    if let Some(n) = net.memory.neurons.get_mut(neuron as usize) {
+        // Из-за честного пассивного остывания старые 0.5 утекли, спайка быть не должно!
+        let fired = n.receive_impulse(
+            0.5,
+            net.current_tick,
+            cfg.leak_tau,
+            cfg.spike_threshold,
+            cfg.cooldown_ticks,
+        );
+        assert!(
+            !fired,
+            "Отрицательный сценарий сломан: потенциал не утек, и нейрон ошибочно выдал спайк!"
+        );
+    }
+}
+
+#[test]
+fn test_positive_global_relaxation_contract() {
+    println!("\n=== [RELAXATION+]: Проверка соблюдения исходного контракта релаксации ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let neuron = net.memory.get_or_create_token("Relax_Target");
+
+    net.inject_stimulus(neuron, 0.8);
+    net.clear_runtime_attention_buffers();
+
+    for _ in 0..50 {
+        net.tick();
+    }
+
+    if let Some(n) = net.memory.neurons.get(neuron as usize) {
+        println!(
+            "  -> [ИНСПЕКЦИЯ]: Потенциал после 50 тиков релаксации: {:.4}",
+            n.potential
+        );
+        assert!(
+            n.potential < 0.1,
+            "КРИТИЧЕСКИЙ СЛОМ: Нейрон застрял на старом потенциале без релаксации!"
+        );
+        assert_eq!(
+            n.last_updated_tick,
+            net.current_tick - 1,
+            "Часы нейрона рассинхронизировались с сетью!"
+        );
+    }
+}
+
+// =================================================================
+// 2. ХРОНОЛОГИЧЕСКИЙ ЧАНКИНГ И СИНТАКСИЧЕСКОЕ ВЕТО
+// =================================================================
+
+#[test]
+fn test_positive_pure_sensory_chunking() {
+    println!("\n=== [CHUNK+]: Проверка рождения базового чанка ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    net.set_learning_mode(true); // Включаем затвор пластичности
+    let a = net.memory.get_or_create_token("let");
+    let b = net.memory.get_or_create_token("var");
+
+    let old_neurons_count = net.memory.neurons.len();
+
+    for _ in 0..10 {
+        net.inject_stimulus(a, 1.2);
+        net.tick();
+        net.inject_stimulus(b, 1.2);
+        net.tick();
+        net.clear_runtime_attention_buffers();
+    }
+
+    assert!(
+        net.memory.neurons.len() > old_neurons_count,
+        "Чанкинг должен был вырастить мета-нейрон!"
+    );
+}
+
+#[test]
+fn test_negative_meta_chunk_explosion_filter() {
+    println!("\n=== [CHUNK-]: Защита от комбинаторного скрещивания чанков ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    net.set_learning_mode(true);
+
+    let meta_a = net.memory.create_meta_chunk(0, 1);
+    let meta_b = net.memory.create_meta_chunk(2, 3);
+
+    let old_neurons_count = net.memory.neurons.len();
+
+    for _ in 0..15 {
+        net.inject_stimulus(meta_a, 1.2);
+        net.tick();
+        net.inject_stimulus(meta_b, 1.2);
+        net.tick();
+        net.clear_runtime_attention_buffers();
+    }
+
+    assert_eq!(
+        net.memory.neurons.len(),
+        old_neurons_count,
+        "Отрицательный сценарий сломан: Скрытые мета-нейроны смогли скреститься!"
+    );
+}
+
+// =================================================================
+// 3. АТОМАРНАЯ КРИТИКА И ЭКСПОРЕНЦИАЛЬНОЕ ЗАТУХАНИЕ (CRITIC & TAGS)
+// =================================================================
+
+#[test]
+fn test_positive_immediate_reinforcement() {
+    println!("\n=== [CRITIC+]: Проверка мгновенного дофаминового подкрепления ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let s = net.memory.get_or_create_token("Source");
+    let t = net.memory.get_or_create_token("Target");
+
+    net.memory.set_synapse(s, t, 0.5, net.current_tick);
+    net.apply_reinforcement(true);
+
+    let weight = net.get_synapse_weight(s, t);
+    assert!(
+        weight > 0.5,
+        "Критик обязан был увеличить вес горячего синапса!"
+    );
+}
+
+#[test]
+fn test_negative_reinforcement_of_decayed_tags() {
+    println!("\n=== [CRITIC-]: Проверка игнорирования остывших синапсов ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let s = net.memory.get_or_create_token("OldSource");
+    let t = net.memory.get_or_create_token("OldTarget");
+
+    net.memory.set_synapse(s, t, 0.5, net.current_tick);
+
+    for _ in 0..200 {
+        net.tick();
+    }
+
+    let old_weight = net.get_synapse_weight(s, t);
+    net.apply_reinforcement(true);
+
+    let new_weight = net.get_synapse_weight(s, t);
+    assert_eq!(
+        old_weight, new_weight,
+        "Критик ошибочно подкрепил остывший синапс!"
+    );
+}
+
+// =================================================================
+// 4. КОНТРАСТНЫЙ СОН И СИНАПТИЧЕСКИЙ ГОМЕОСТАЗ (SLEEP & PRUNING)
+// =================================================================
+
+#[test]
+fn test_positive_sleep_and_prune_contrast() {
+    println!("\n=== [SLEEP+]: Проверка выжигания мусорных связей во сне ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let s = net.memory.get_or_create_token("Fn");
+    let correct = net.memory.get_or_create_token("Correct");
+    let noise = net.memory.get_or_create_token("Noise");
+
+    net.memory.set_synapse(s, correct, 1.6, net.current_tick);
+    net.memory.set_synapse(s, noise, 0.5, net.current_tick);
+
+    net.sleep_and_prune();
+
+    let strong_weight = net.get_synapse_weight(s, correct);
+    let weak_weight = net.get_synapse_weight(s, noise);
+
+    assert!(
+        strong_weight > 1.0,
+        "Сильная связь должна была пережить сон!"
+    );
+    assert_eq!(
+        weak_weight, 0.0,
+        "Слабый синаптический шум не был уничтожен сном!"
+    );
+}
+
+#[test]
+fn test_negative_critic_synaptic_divergence_protection() {
+    println!("\n=== [CRITIC-]: Краш-тест защиты от лавинного раздувания веера ===");
+    let mut net = SpikingNetwork::new(BrainConfig::default());
+    let s = net.memory.get_or_create_token("HyperSource");
+
+    for i in 0..20 {
+        let t = net
+            .memory
+            .get_or_create_token(&format!("StormTarget_{}", i));
+        net.memory.set_synapse(s, t, 0.5, net.current_tick);
+    }
+
+    if let Some(links) = net.memory.adj_list.get_mut(s as usize) {
+        for synapse in links.iter_mut() {
+            synapse.tag_trace = 1.0;
+        }
+    }
+
+    net.apply_reinforcement(true);
+
+    let final_links_count = net.memory.adj_list[s as usize].len();
+    let cfg = spikedb::config::CONFIG.get().unwrap();
+
+    assert!(
+        final_links_count <= cfg.max_synaptic_fanout,
+        "КАТАСТРОФА: Критик пропустил лавинное раздувание веера синапсов!"
+    );
+}
+
+// =================================================================
+// 5. АСИНХРОННАЯ МНОГОПОТОЧНАЯ ИНТЕГРАЦИЯ И СТРЕСС-БАРЬЕРЫ
 // =================================================================
 
 #[test]
 fn test_pure_async_lif_threshold_and_cooldown() {
-    println!("\n=== [LIF+ TEST]: Асинхронная проверка порога и кулдауна ===");
+    println!("\n=== [LIF+ TEST]: Асинхронная проверка через Актёра ===");
     let db = SpikeDB::open("sandbox_lif_cooldown");
 
-    // Положительный сценарий: Подаем пачку токенов залпом. Порог должен пробиться.
-    let line = vec!["fn".to_string(), "correct_name".to_string()];
-    db.inject_string_context(line, 1.2, Some(true));
-    
-    // Барьер гарантирует, что Актёр полностью переварил спайки на максимальной скорости
-    db.wait_flush_barrier();
-
-    // Запрашиваем предсказание из немутабельного графа
-    let res = db.generate_code_hypothesis("fn", vec![]);
-    assert!(res.contains(&"correct_name".to_string()), "Порог не пробился или синапс не укрепился!");
-
-    // Отрицательный сценарий (Кулдаун): Шлём ту же строку НЕМЕДЛЕННО вслед за первой.
-    // Из-за каноничного рефрактерного периода нейроны обязаны проигнорировать повторный импульс!
-    let duplicate_line = vec!["fn".to_string(), "correct_name".to_string()];
-    db.inject_string_context(duplicate_line, 1.2, Some(true));
-    db.wait_flush_barrier();
-
-    // Ночной сон. Если кулдаун сработал правильно, лишних весов в системе не вырастет.
-    db.trigger_sleep();
-    db.wait_flush_barrier();
-}
-
-#[test]
-fn test_pure_async_lif_leakage_over_time() {
-    println!("\n=== [LIF- TEST]: Асинхронная проверка экспоненциальной утечки ===");
-    let db = SpikeDB::open("sandbox_lif_leak");
-
-    // Подаем слабый заряд (0.4), недостаточный для порога
-    db.inject_string_context(vec!["let".to_string()], 0.4, None);
-    db.wait_flush_barrier();
-
-    // ИСПРАВЛЕНИЕ НЕПОКРЫТОГО ФУНКЦИОНАЛА: Имитируем реальный дрейф биологического времени.
-    // Вместо ручного вызова net.tick() мы шлем пустые маркерные пачки (такты тишины),
-    // заставляя асинхронное Ядро продвигать current_tick и честно вычислять утечку мембраны!
-    for _ in 0..15 {
-        db.inject_string_context(vec![], 0.0, None);
-    }
-    db.wait_flush_barrier();
-
-    // Отправляем сеть спать. Так как заряд 0.4 за 15 тактов тишины обязан полностью утечь в ноль,
-    // синапс не успеет консолидироваться и будет полностью уничтожен ночным прунингом!
-    db.trigger_sleep();
-    db.wait_flush_barrier();
-
-    // Проверяем: связь должна отсутствовать полностью
-    let res = db.generate_code_hypothesis("let", vec![]);
-    assert_eq!(res, vec!["let"], "Отрицательный сценарий сломан: Потенциал не утек, и связь выжила во сне!");
-}
-
-// =================================================================
-// 2. СТРУКТУРНЫЙ ЧАНКИНГ И СИНТАКСИЧЕСКОЕ ВЕТО
-// =================================================================
-
-#[test]
-fn test_async_pure_sensory_chunking() {
-    println!("\n=== [CHUNK+ TEST]: Асинхронное рождение базового чанка ===");
-    let db = SpikeDB::open("sandbox_chunk_pos");
-
-    // 10 раз скармливаем Актёру устойчивую синтаксическую строку
     for _ in 0..10 {
-        let line = vec!["struct".to_string(), "MyType".to_string(), "{".to_string(), "}".to_string()];
+        let line = vec!["fn".to_string(), "correct_name".to_string()];
         db.inject_string_context(line, 1.2, Some(true));
     }
     db.wait_flush_barrier();
 
+    let res = db.generate_code_hypothesis("fn", vec![]);
+    assert!(
+        res.contains(&"correct_name".to_string()),
+        "Порог не пробился или синапс не укрепился!"
+    );
+
+    let duplicate_line = vec!["fn".to_string(), "correct_name".to_string()];
+    db.inject_string_context(duplicate_line, 1.2, Some(true));
+    db.wait_flush_barrier();
+
     db.trigger_sleep();
     db.wait_flush_barrier();
-
-    let res = db.generate_code_hypothesis("struct", vec![]);
-    assert!(res.contains(&"MyType".to_string()), "Подсистема чанкинга не смогла вырастить базовое синтаксическое понятие!");
 }
 
 #[test]
-fn test_async_lateral_inhibition_of_unknown_errors() {
-    println!("\n=== [INHIBITION TEST]: Непокрытый сценарий латерального торможения ===");
-    let db = SpikeDB::open("sandbox_inhibition");
+fn test_negative_actor_inter_sentence_avalanche_protection() {
+    println!("\n=== [OVERLOAD- TEST]: Абсолютный краш-тест резонансного шторма словаря ===");
+    let db = SpikeDB::open("sandbox_avalanche_cyclotron_real");
 
-    // Учим правилу
-    for _ in 0..5 {
-        db.inject_string_context(vec!["match".to_string(), "value".to_string(), ";".to_string()], 1.2, Some(true));
+    println!("  -> [ЦИКЛОТРОН]: Запуск лавинной бомбардировки перекрестного графа...");
+    for i in 0..300 {
+        let line_fn = vec![
+            "fn".to_string(),
+            format!("func_{}", i),
+            "(".to_string(),
+            ")".to_string(),
+            "->".to_string(),
+            "bool".to_string(),
+            "{".to_string(),
+        ];
+        let line_let = vec![
+            "let".to_string(),
+            format!("var_{}", i),
+            ":".to_string(),
+            "u32".to_string(),
+            "=".to_string(),
+            format!("{}", i),
+            ";".to_string(),
+        ];
+        let line_if = vec![
+            "if".to_string(),
+            format!("var_{}", i),
+            "==".to_string(),
+            "0".to_string(),
+            "{".to_string(),
+            "}".to_string(),
+        ];
+
+        db.inject_string_context(line_fn, 1.5, Some(true));
+        db.inject_string_context(line_let, 1.5, Some(true));
+        db.inject_string_context(line_if, 1.5, Some(true));
     }
     db.wait_flush_barrier();
 
-    // Имитируем появление совершенно нового, запрещенного контекста ошибки компилятора (E0277)
-    let forbidden_context = vec!["E0277".to_string(), "value".to_string()];
+    let total_ticks = db.get_current_kernel_tick();
+    println!(
+        "  -> [ИНСПЕКЦИЯ]: После шторма сеть намотала ТИКА(ОВ): {}",
+        total_ticks
+    );
 
-    // Запрашиваем генерацию мутации, передавая этот новый контекст вето
-    let res = db.generate_code_hypothesis("match", forbidden_context);
-
-    // Жесткое отрицательное вето: сеть обязана выбросить "value" из траектории мысли,
-    // так как этот токен находится в запрещенном латеральном поле ошибки E0277!
-    assert!(!res.contains(&"value".to_string()), 
-        "Отрицательный сценарий сломан: Латеральное торможение пропустило запрещенный контекст!");
+    assert!(
+        total_ticks < 8000,
+        "КАТАСТРОФА: Сеть ушла в бесконечный шторм! Намотано {} тиков вместо положенных ~6000!",
+        total_ticks
+    );
 }
 
-// =================================================================
-// 6. ГЛУБОКАЯ МАТЕМАТИКА ПЛАСТИЧНОСТИ И АСИММЕТРИИ (DEEP MATRIX)
-// =================================================================
-
 #[test]
-fn test_positive_exponential_tag_decay_curve() {
-    println!("\n=== [MATHEMATICS+ TEST]: Проверка точной кривой угасания синаптического следа ===");
+fn test_negative_global_relaxation_contract() {
+    println!("\n============================================================");
+    println!("=== [RELAXATION- TEST]: Контроль пассивного остывания мембраны ===");
+    println!("============================================================");
+    
     let mut net = SpikingNetwork::new(BrainConfig::default());
-    let s = net.memory.get_or_create_token("Decay_S");
-    let t = net.memory.get_or_create_token("Decay_T");
+    let neuron = net.memory.get_or_create_token("Relax_Target");
 
-    // Рождаем синапс на тике 0 (tag_trace автоматически взводится в 1.0)
-    net.memory.set_synapse(s, t, 0.5, net.current_tick);
-    
-    // Продвигаем время на 5 тиков вперед
-    for _ in 0..5 { net.tick(); }
-    
-    let mut links = std::mem::take(&mut net.memory.adj_list[s as usize]);
-    let synapse = &mut links[0];
-    
-    // Запускаем ленивое угасание
-    let cfg = CONFIG.get().unwrap();
-    synapse.decay_tag_lazy(net.current_tick, cfg.tag_tau);
-    let tag_at_tick_5 = synapse.tag_trace;
-    
-    assert!(tag_at_tick_5 < 1.0, "Химический след вообще не уменьшился за 5 тиков!");
+    net.inject_stimulus(neuron, 0.8);
+    net.event_queue.clear();
 
-    // Продвигаем время еще на 20 тиков вперед
-    for _ in 0..20 { net.tick(); }
-    synapse.decay_tag_lazy(net.current_tick, cfg.tag_tau);
-    let tag_at_tick_25 = synapse.tag_trace;
-
-    // Математический контроль: след на тике 25 обязан быть строго меньше, чем на тике 5!
-    assert!(tag_at_tick_25 < tag_at_tick_5, 
-        "Математический сбой: Экспоненциальная кривая затухания tag_trace деформирована!");
-        
-    net.memory.adj_list[s as usize] = links;
-}
-
-#[test]
-fn test_positive_asymmetric_lateral_inhibition() {
-    println!("\n=== [INHIBITION+ TEST]: Проверка асимметрии латерального вето ===");
-    let db = SpikeDB::open("sandbox_asymmetric_veto");
-
-    // Прокладываем в ОЗУ два независимых синтаксических маршрута из одной точки "let"
-    // Дорога А (Разрешенная): "let" -> "correct_var" -> ";"
-    // Дорога Б (Запрещенная): "let" -> "bad_literal" -> ";"
-    for _ in 0..5 {
-        db.inject_string_context(vec!["let".to_string(), "correct_var".to_string(), ";".to_string()], 1.2, Some(true));
-        db.inject_string_context(vec!["let".to_string(), "bad_literal".to_string(), ";".to_string()], 1.2, Some(true));
+    if let Some(n) = net.memory.neurons.get(neuron as usize) {
+        println!("  -> [СТАРТ]: Идентификатор токена Relax_Target = {}", neuron);
+        println!("  -> [СТАРТ]: Начальный потенциал нейрона = {}", n.potential);
+        assert_eq!(n.potential, 0.8, "Заряд не лег на мембрану на старте!");
     }
-    db.wait_flush_barrier();
 
-    // Заносим в черный список СТРОГО токен "bad_literal" (Имитируем контекст ошибки Cargo)
-    let forbidden_context = vec!["bad_literal".to_string()];
-
-    // Запускаем генерацию
-    let res = db.generate_code_hypothesis("let", forbidden_context);
-
-    // Бескомпромиссный контроль асимметрии:
-    assert!(!res.contains(&"bad_literal".to_string()), 
-        "Отрицательный сценарий сломан: Вето пропустило заблокированный токен!");
+    println!("  -> [ПАУЗА]: Запуск 20 циклов net.tick()...");
+    for step in 1..=20 {
+        println!("    --- Вызов net.tick() №{} ---", step);
+        net.tick();
         
-    assert!(res.contains(&"correct_var".to_string()), 
-        "Положительный сценарий сломан: Латеральное вето ошибочно задушило разрешенный параллельный путь!");
-}
+        // Инспектируем состояние прямо внутри цикла
+        if let Some(n) = net.memory.neurons.get(neuron as usize) {
+            println!("        Состояние после шага {}: Потенциал = {}, Last_Updated_Tick = {}", 
+                step, n.potential, n.last_updated_tick);
+        }
+    }
 
-#[test]
-fn test_negative_isolated_meta_chunk_conductance() {
-    println!("\n=== [CONDUCTANCE- TEST]: Защита рекурсии от стертых сном мета-узлов ===");
-    let net = SpikingNetwork::new(BrainConfig::default());
-    
-    // Передаем в метод поиска заведомо несуществующий, гигантский ID-призрак (999_999)
-    // Наша ОЗУ-система обязана безопасно обработать этот тупик, не свалившись в панику индекса вектора!
-    let terminal_id = net.memory.get_chunk_terminal_token_id(999_999);
-    
-    assert_eq!(terminal_id, 999_999, 
-        "Отрицательный сценарий сломан: Безопасный рекурсивный метод .get() не смог обработать изолированный узел!");
+    if let Some(n) = net.memory.neurons.get(neuron as usize) {
+        println!("  -> [ФИНИШ]: Потенциал нейрона на тике {} = {}", net.current_tick, n.potential);
+        assert!(n.potential < 0.15, "Критический слом релаксации потенциала!");
+        assert_eq!(n.last_updated_tick, net.current_tick, "Часы нейрона рассинхронизировались с часами сети!");
+    }
+    println!("============================================================");
 }

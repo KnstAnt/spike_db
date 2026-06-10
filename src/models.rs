@@ -19,7 +19,6 @@ pub struct NeuronState {
     pub last_updated_tick: u64,
     pub cooldown_until: u64,
     pub neuron_type: NeuronType,
-    // НОВОЕ ПОЛЕ: Каноничная ссылка происхождения нейрона
     pub origin: NeuronOrigin,
 }
 
@@ -29,6 +28,7 @@ pub struct Synapse {
     pub weight: f32,
     pub tag_trace: f32,
     pub last_used_tick: u64,
+    pub cooldown_until: u64,
 }
 
 impl NeuronState {
@@ -50,14 +50,16 @@ impl NeuronState {
         spike_threshold: f32,
         cooldown_ticks: u64,
     ) -> bool {
-        // Жесткая проверка кулдауна на текущий системный тик
+        // ИСПРАВЛЕНИЕ: Если нейрон отдыхает в кулдауне, мы продвигаем его часы last_updated_tick,
+        // но мембранный потенциал жестко удерживаем в нуле (активное торможение релаксации)!
         if current_tick < self.cooldown_until {
+            self.potential = 0.0;
+            self.last_updated_tick = current_tick;
             return false;
         }
 
         if current_tick > self.last_updated_tick {
             let delta_t = (current_tick - self.last_updated_tick) as f32;
-            // ИСПРАВЛЕНИЕ: Гарантируем строгий математический знак минус перед делением дельты!
             let leak_factor = (-delta_t / leak_tau).exp();
             self.potential *= leak_factor;
             self.last_updated_tick = current_tick;
@@ -71,6 +73,7 @@ impl NeuronState {
 
         if self.potential >= spike_threshold {
             self.potential = 0.0;
+            // Взводим глубокий рефрактерный период отдыха
             self.cooldown_until = current_tick + cooldown_ticks;
             true
         } else {
@@ -81,8 +84,12 @@ impl NeuronState {
 
 impl Synapse {
     pub fn trigger(&mut self, current_tick: u64, tag_tau: f32) {
+        if current_tick < self.cooldown_until {
+            return;
+        }
         self.decay_tag_lazy(current_tick, tag_tau);
-        self.tag_trace = (self.tag_trace + 0.5).min(1.0);
+        self.tag_trace = 1.0;
+        self.last_used_tick = current_tick;
     }
 
     pub fn decay_tag_lazy(&mut self, current_tick: u64, tag_tau: f32) {
